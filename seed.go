@@ -19,6 +19,12 @@ const (
   h1 { margin: 0 0 .75rem; font-size: 2rem; }
   p { margin: .6rem 0; line-height: 1.7; color: #4b5563; }
   code { padding: .1rem .35rem; border-radius: .3rem; background: #e8ebf2; }
+  h2 { margin: 1.6rem 0 .4rem; font-size: 1.1rem; }
+  h3 { margin: 1.1rem 0 .3rem; font-size: .95rem; }
+  pre { margin: .4rem 0 1rem; padding: .9rem; border-radius: .5rem; overflow: auto;
+        background: #12151c; color: #dbe7e1; font: .8rem/1.6 ui-monospace, monospace; white-space: pre; }
+  a.button { display: inline-block; margin: .4rem 0 .2rem; padding: .65rem 1rem;
+             border-radius: .5rem; background: #125a48; color: #fff; text-decoration: none; }
   @media (prefers-color-scheme: dark) {
     body { background: #12151c; color: #e8eaf0; }
     p { color: #aab0c0; }
@@ -30,8 +36,27 @@ const (
 <main>
 <h1>OpenPage</h1>
 <p>服务已经启动。这是首次运行时自动创建的默认页面。</p>
-<p>打开 <code>/admin/</code> 进入管理台，编辑这个页面，或创建新页面并发布。</p>
-<p>发布后可以在「系统设置」里把任意页面设为默认页面。</p>
+<p><a class="button" href="/admin/">进入管理台</a></p>
+<h2>让 AI 改页面</h2>
+<p>默认不需要令牌。把下面任意一份配置粘到 AI 客户端，就能让它修改页面。</p>
+<h3>Claude Code</h3>
+<pre id="claude-config"></pre>
+<h3>Codex</h3>
+<pre id="codex-config"></pre>
+<h3>OpenCode</h3>
+<pre id="opencode-config"></pre>
+<p>如果之后在管理台开启了 MCP 鉴权，请到管理台「设置」页的「连接 AI」复制带令牌的配置。</p>
+<script>
+  var mcpUrl = location.origin + "/mcp";
+  document.getElementById("claude-config").textContent = JSON.stringify({
+    mcpServers: { openpage: { type: "http", url: mcpUrl } }
+  }, null, 2) + "\n";
+  document.getElementById("codex-config").textContent =
+    "[mcp_servers.openpage]\nurl = " + JSON.stringify(mcpUrl) + "\n";
+  document.getElementById("opencode-config").textContent = JSON.stringify({
+    mcp: { servers: { openpage: { type: "remote", url: mcpUrl, oauth: false } } }
+  }, null, 2) + "\n";
+</script>
 </main>
 </body>
 </html>

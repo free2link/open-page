@@ -76,7 +76,11 @@ func (a *Service) authorized(next http.Handler, mode accessMode) http.Handler {
 		}
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		a.store.mu.RLock()
-		valid := ok && subtle.ConstantTimeCompare([]byte(digest([]byte(token))), []byte(a.store.settings.TokenHash)) == 1
+		hash := a.store.settings.TokenHash
+		if mode == adminAccess {
+			hash = a.store.settings.AdminHash
+		}
+		valid := ok && subtle.ConstantTimeCompare([]byte(digest([]byte(token))), []byte(hash)) == 1
 		optional := (mode == apiAccess && a.store.settings.APIAuthDisabled) ||
 			(mode == mcpAccess && a.store.settings.MCPAuthDisabled)
 		a.store.mu.RUnlock()

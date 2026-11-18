@@ -67,6 +67,8 @@ type pageDisk struct {
 type Settings struct {
 	DefaultPage     string `json:"defaultPage"`
 	TokenHash       string `json:"tokenHash"`
+	AdminHash       string `json:"adminHash"`
+	APIToken        string `json:"apiToken"`
 	PreviewKey      string `json:"previewKey"`
 	APIAuthDisabled bool   `json:"apiAuthDisabled,omitempty"`
 	MCPAuthDisabled bool   `json:"mcpAuthDisabled,omitempty"`
@@ -194,14 +196,15 @@ func (s *Store) initialize(token string) error {
 			return errors.New("OPENPAGE_TOKEN must have at least 24 characters or use the default admin password")
 		}
 		s.settings.TokenHash = digest([]byte(token))
+		s.settings.AdminHash = s.settings.TokenHash
+		s.settings.APIToken = token
+		s.settings.APIAuthDisabled = true
+		s.settings.MCPAuthDisabled = true
 	}
 	fresh := errors.Is(err, fs.ErrNotExist)
 	write := fresh
-	if s.settings.PreviewKey == "" {
-		s.settings.PreviewKey = randomID() + randomID()
-		write = true
-	}
 	if fresh {
+		s.settings.PreviewKey = randomID() + randomID()
 		if err := s.seedDefaultPage(); err != nil {
 			return err
 		}

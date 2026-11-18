@@ -17,8 +17,7 @@ RUN mkdir -p /out/data && chmod 0700 /out/data && \
     go build -trimpath -ldflags="-s -w" -o /out/openpage .
 
 FROM scratch
-COPY --from=build --chown=10001:10001 /out/ /
-USER 10001:10001
+COPY --from=build /out/ /
 ENV OPENPAGE_DATA_DIR=/data
 EXPOSE 3000
 VOLUME ["/data"]

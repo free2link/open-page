@@ -101,7 +101,7 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 		return version
 	}
 	first := publish()
-	call("PUT", server.URL+"/api/settings", `{"defaultPage":"kiosk"}`, nil, 200)
+	call("PUT", server.URL+"/api/settings", `{"defaultPage":"kiosk","requireApiAuth":true}`, nil, 200)
 	page, publishedHeaders := call("GET", server.URL+"/", "", nil, 200)
 	if !strings.Contains(publishedHeaders.Get("Content-Security-Policy"), "sandbox allow-scripts") ||
 		publishedHeaders.Get("Access-Control-Allow-Origin") != "*" {
@@ -133,6 +133,9 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Close()
+	if init := session.InitializeResult(); init == nil || !strings.Contains(init.Instructions, "Web Components") || !strings.Contains(init.Instructions, "plain HTML") {
+		t.Fatalf("MCP instructions missing Web Components guidance: %+v", init)
+	}
 	tools, err := session.ListTools(ctx, nil)
 	if err != nil || len(tools.Tools) < 13 {
 		t.Fatalf("MCP tools: %v %v", tools, err)
@@ -225,8 +228,15 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	if strings.Contains(string(responseBody), newPassword) {
 		t.Fatal("settings response disclosed the password")
 	}
-	call("GET", root, "", nil, 401)
+	call("GET", root, "", nil, 200)
+	const newToken = "an-independent-api-token-for-tests"
 	client.Transport = authTransport{newPassword}
+	call("GET", server.URL+"/admin/api/settings", "", nil, 200)
+	call("GET", root, "", nil, 401)
+	client.Transport = authTransport{testToken}
+	call("PUT", server.URL+"/api/settings", fmt.Sprintf(`{"newToken":%q}`, newToken), nil, 200)
+	call("GET", root, "", nil, 401)
+	client.Transport = authTransport{newToken}
 	call("GET", root, "", nil, 200)
 	call("GET", signed.URL, "", nil, 404)
 
@@ -238,7 +248,10 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	}
 	defer reopened.close()
 	p, err := reopened.load("kiosk")
-	if err != nil || p.Current != restoredVersion.ID || reopened.settings.DefaultPage != "kiosk" || reopened.settings.TokenHash != digest([]byte(newPassword)) {
+	if err != nil || p.Current != restoredVersion.ID || reopened.settings.DefaultPage != "kiosk" ||
+		reopened.settings.TokenHash != digest([]byte(newToken)) ||
+		reopened.settings.AdminHash != digest([]byte(newPassword)) ||
+		reopened.settings.APIToken != newToken {
 		t.Fatalf("incorrect persisted state: %v %v", p, err)
 	}
 }
@@ -369,6 +382,9 @@ func TestDefaultPasswordAndPreviewKey(t *testing.T) {
 	if len(store.settings.PreviewKey) < 32 || store.settings.PreviewKey == store.settings.TokenHash {
 		t.Fatal("preview key must be independently generated")
 	}
+	if store.settings.AdminHash != store.settings.TokenHash || store.settings.APIToken != "admin" {
+		t.Fatal("fresh settings must separate login and API credentials")
+	}
 }
 
 func TestFreshStoreSeedsDefaultPage(t *testing.T) {
@@ -391,29 +407,6 @@ func TestFreshStoreSeedsDefaultPage(t *testing.T) {
 	entries, err := store.list()
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("seeded pages = %v, %v", entries, err)
-	}
-}
-
-func TestExistingCredentialSurvivesPreviewKeyMigration(t *testing.T) {
-	dir := t.TempDir()
-	store, err := openStore(dir, testToken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy := store.settings
-	legacy.PreviewKey = ""
-	err = store.writeJSON("config/settings.json", legacy)
-	store.close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	migrated, err := openStore(dir, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer migrated.close()
-	if migrated.settings.TokenHash != digest([]byte(testToken)) || migrated.settings.PreviewKey == "" {
-		t.Fatal("migration must retain the configured credential and create a preview key")
 	}
 }
 
@@ -446,18 +439,21 @@ func TestOptionalExternalAuthenticationKeepsAdminProtected(t *testing.T) {
 	const listMCP = `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_pages","arguments":{}}}`
 	const settingsMCP = `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_settings","arguments":{}}}`
 	const settings = "/admin/api/settings"
-	call("GET", "/api/pages", "", "", "", 401)
-	call("POST", "/mcp", listMCP, "", "", 401)
-
-	call("PUT", settings, `{"requireApiAuth":false}`, testToken, "", 200)
+	if !store.settings.APIAuthDisabled || !store.settings.MCPAuthDisabled {
+		t.Fatal("fresh settings must leave external authentication disabled")
+	}
+	call("GET", "/api/pages", "", "", "", 200)
+	if result := call("POST", "/mcp", listMCP, "", "", 200); !strings.Contains(result, "home") {
+		t.Fatalf("open MCP could not list pages: %s", result)
+	}
 	call("POST", "/api/pages", `{"id":"demo","title":"Demo"}`, "", "", 201)
-	call("POST", "/mcp", listMCP, "", "", 401)
 	call("GET", "/admin/api/pages", "", "", "", 401)
 	call("PUT", "/api/settings", `{"newPassword":"another-password"}`, "", "", 401)
 	call("POST", "/api/pages", `{"id":"foreign","title":"Foreign"}`, "", "null", 403)
 
-	call("PUT", settings, `{"requireApiAuth":true,"requireMcpAuth":false}`, testToken, "", 200)
+	call("PUT", settings, `{"requireApiAuth":true}`, testToken, "", 200)
 	call("GET", "/api/pages", "", "", "", 401)
+	call("GET", "/api/pages", "", testToken, "", 200)
 	if result := call("POST", "/mcp", listMCP, "", "", 200); !strings.Contains(result, "demo") {
 		t.Fatalf("open MCP could not list pages: %s", result)
 	}

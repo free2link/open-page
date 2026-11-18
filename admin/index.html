@@ -7,117 +7,167 @@
   <link rel="stylesheet" href="vendor/styles/webawesome.css">
   <link rel="stylesheet" href="app.css">
   <script type="module" src="vendor/components/badge/badge.js"></script>
+  <script src="vendor/editor.js"></script>
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <a href="#main-content" class="skip-link">跳到主要内容</a>
   <header class="masthead">
-    <a href="./" class="brand">Open<span>Page</span></a>
+    <a href="#/" class="brand">Open<span>Page</span></a>
     <span class="subtitle">页面管理台</span>
-    <button id="logout" type="button" hidden>退出管理台</button>
+    <div class="masthead-actions">
+      <button id="back" type="button" hidden>← 返回</button>
+      <button id="settings-open" type="button" hidden>设置</button>
+      <button id="logout" type="button" hidden>退出</button>
+    </div>
   </header>
   <main id="main-content" tabindex="-1">
     <p id="status" role="status" class="status"></p>
+
     <section id="login" class="login panel">
       <h1>登录管理台</h1>
       <form id="login-form">
-        <label for="login-token">管理口令</label>
+        <label for="login-token">登录口令</label>
         <input id="login-token" type="password" required autocomplete="off" spellcheck="false">
         <button class="primary">登录</button>
       </form>
     </section>
-    <div id="workspace" class="workspace" hidden>
-      <aside class="panel sidebar" aria-labelledby="pages-title">
-        <div class="heading">
-          <h2 id="pages-title">页面</h2>
-          <button id="new-page" type="button">新建</button>
+
+    <div id="workspace" hidden>
+      <section id="empty" class="wall" aria-labelledby="wall-title">
+        <div class="wall-head">
+          <div>
+            <h1 id="wall-title">页面</h1>
+            <p class="muted">选择页面查看和编辑，或新建一个。</p>
+          </div>
+          <button id="new-page" type="button" class="primary">＋ 新建页面</button>
         </div>
-        <ul id="pages" class="items"></ul>
-        <details class="settings">
-          <summary>系统设置</summary>
-          <form id="settings-form">
-            <label for="default-page">默认页面</label>
-            <select id="default-page"></select>
-            <fieldset class="access-settings" aria-describedby="access-help">
-              <legend>接口鉴权</legend>
-              <label><input id="require-api-auth" type="checkbox"> HTTP API 需要口令</label>
-              <label><input id="require-mcp-auth" type="checkbox"> MCP 需要口令</label>
-            </fieldset>
-            <p id="access-help" class="muted">关闭后，能访问服务的客户端可直接操作页面和草稿。管理台和系统设置仍需口令。</p>
-            <button>保存设置</button>
-          </form>
-          <dl id="service-info"></dl>
-          <div class="mcp-settings">
-            <label for="mcp-format">MCP 配置格式</label>
-            <select id="mcp-format">
-              <option value="codex">Codex · config.toml</option>
-              <option value="opencode">OpenCode · opencode.json</option>
-            </select>
-            <button id="copy-mcp-config" type="button">复制 MCP 配置</button>
-            <p id="mcp-copy-help" class="muted"></p>
-          </div>
-          <button id="change-password" type="button">修改管理口令</button>
-        </details>
-      </aside>
-      <section id="empty" class="panel empty">
-        <h1>选择一个页面</h1>
-        <p>也可以新建页面，然后添加入口文件 index.html。</p>
+        <ul id="pages" class="cards" role="list"></ul>
+        <p id="wall-empty" class="muted" hidden>还没有页面，点上面的按钮开始。</p>
       </section>
-      <section id="page" class="page" hidden aria-labelledby="page-title">
-        <header class="panel page-header">
-          <div class="heading">
-            <div>
-              <p id="page-id" class="kicker"></p>
-              <h1 id="page-title"></h1>
-              <p class="muted"><wa-badge id="page-state"></wa-badge> <span id="current"></span></p>
-            </div>
-            <div class="actions">
-              <button id="rename" type="button">改名</button>
-              <button id="visibility" type="button">关闭公开访问</button>
-              <button id="preview" type="button">预览草稿</button>
-              <a id="public-link" class="button" target="_blank" rel="noopener noreferrer">打开正式页面</a>
-              <button id="publish" class="primary" type="button">发布</button>
-            </div>
+
+      <section id="page" class="studio" hidden aria-labelledby="page-title">
+        <header class="studio-head">
+          <div class="studio-title">
+            <h1 id="page-title"></h1>
+            <p class="muted"><code id="page-id"></code> <wa-badge id="page-state"></wa-badge> <span id="current"></span></p>
           </div>
-          <div id="preview-result" hidden>
-            <a id="preview-link" target="_blank" rel="noopener noreferrer">打开已生成的预览链接</a>
-            <span class="muted">链接 30 分钟内有效</span>
-          </div>
-        </header>
-        <div class="editor-grid panel">
-          <section class="files" aria-labelledby="files-title">
-            <div class="heading">
-              <h2 id="files-title">工作文件</h2>
-              <button id="new-file" type="button">新建</button>
-            </div>
-            <input id="upload" type="file" hidden>
-            <button id="choose-upload" type="button">上传文件</button>
-            <button id="draft" type="button" hidden>返回工作版本</button>
-            <ul id="files" class="items"></ul>
-          </section>
-          <section class="editor" aria-labelledby="file-name">
-            <div class="heading">
-              <h2 id="file-name">文件编辑器</h2>
-              <div class="actions">
-                <button id="download" type="button" hidden>下载</button>
-                <button id="delete-file" type="button" hidden>删除</button>
-                <button id="save" class="primary" type="button" hidden>保存文件</button>
+          <div class="actions">
+            <a id="public-link" class="button" target="_blank" rel="noopener noreferrer" hidden>打开正式页面</a>
+            <button id="edit-toggle" type="button">编辑</button>
+            <button id="history-open" type="button">历史</button>
+            <button id="publish" class="primary" type="button">发布</button>
+            <div class="more">
+              <button id="more-toggle" type="button" aria-haspopup="true" aria-expanded="false">更多</button>
+              <div id="more-menu" class="more-menu" hidden>
+                <button id="rename" type="button">改名</button>
+                <button id="visibility" type="button">关闭公开访问</button>
+                <button id="delete-page" class="danger" type="button">删除页面</button>
               </div>
             </div>
-            <p id="file-message" class="muted">选择或新建文件以开始编辑。</p>
-            <textarea id="source" aria-label="文件内容" spellcheck="false" autocapitalize="off" hidden></textarea>
-          </section>
-        </div>
-        <section class="panel releases" aria-labelledby="versions-title">
-          <div class="heading">
-            <h2 id="versions-title">发布历史</h2>
-            <button id="delete-page" class="danger" type="button">删除页面</button>
           </div>
-          <ul id="versions" class="versions"></ul>
-        </section>
+        </header>
+        <div class="canvas">
+          <iframe id="preview-frame" title="页面草稿预览"></iframe>
+        </div>
+      </section>
+
+      <section id="settings-page" class="settings-page" hidden aria-labelledby="settings-title">
+        <header class="settings-head">
+          <div>
+            <h1 id="settings-title">系统设置</h1>
+            <p class="muted">默认页面、接口鉴权、令牌和登录口令。</p>
+          </div>
+        </header>
+        <form id="settings-form" class="settings-grid">
+          <section class="panel">
+            <h2>站点</h2>
+            <label for="default-page">默认页面</label>
+            <select id="default-page"></select>
+            <p class="muted">根路径 <code>/</code> 显示的页面。</p>
+          </section>
+          <section class="panel">
+            <h2>接口鉴权</h2>
+            <div class="access-settings" aria-describedby="access-help">
+              <label><input id="require-api-auth" type="checkbox"> HTTP API 需要令牌</label>
+              <label><input id="require-mcp-auth" type="checkbox"> MCP 需要令牌</label>
+            </div>
+            <p id="access-help" class="muted">默认关闭。关闭后，能访问服务的客户端可直接操作页面和草稿；管理台仍需登录口令。</p>
+          </section>
+          <section class="panel">
+            <h2>API / MCP 令牌</h2>
+            <label for="api-token">令牌</label>
+            <input id="api-token" type="text" autocomplete="off" spellcheck="false" maxlength="256">
+            <button id="generate-token" type="button">重新生成</button>
+            <p class="muted">用于 HTTP API 和 MCP；开启鉴权后必须使用。</p>
+          </section>
+          <section class="panel">
+            <h2>服务</h2>
+            <dl id="service-info"></dl>
+            <button id="change-password" type="button">修改登录口令</button>
+          </section>
+          <section class="panel connect-panel">
+            <div class="connect-head">
+              <div>
+                <h2>连接 AI</h2>
+                <p class="muted">把配置粘到 Codex、OpenCode 或 Claude Code，AI 就能直接修改页面。</p>
+              </div>
+              <div class="actions">
+                <div class="format-tabs" role="tablist" aria-label="MCP 配置格式">
+                  <button type="button" class="tab" data-format="claude" aria-selected="true">Claude Code</button>
+                  <button type="button" class="tab" data-format="codex" aria-selected="false">Codex</button>
+                  <button type="button" class="tab" data-format="opencode" aria-selected="false">OpenCode</button>
+                </div>
+                <button id="copy-mcp-config" type="button">复制配置</button>
+              </div>
+              <input type="hidden" id="mcp-format" value="claude">
+            </div>
+            <pre id="mcp-config-preview" class="config-preview" tabindex="0"></pre>
+            <p id="mcp-copy-help" class="muted"></p>
+          </section>
+          <div class="settings-actions">
+            <button class="primary">保存设置</button>
+          </div>
+        </form>
       </section>
     </div>
   </main>
+
+  <aside id="editor-drawer" class="drawer editor-drawer" hidden aria-labelledby="file-name">
+    <header class="drawer-head">
+      <div>
+        <p class="kicker" id="files-title">工作文件</p>
+        <h2 id="file-name">文件</h2>
+      </div>
+      <div class="actions">
+        <button id="download" type="button" hidden>下载</button>
+        <button id="delete-file" type="button" hidden>删除</button>
+        <button id="save" class="primary" type="button" hidden>保存</button>
+        <button id="editor-close" type="button">关闭</button>
+      </div>
+    </header>
+    <div class="file-bar">
+      <ul id="files" class="files" role="list"></ul>
+      <div class="file-actions">
+        <button id="new-file" type="button">新建文件</button>
+        <button id="choose-upload" type="button">上传</button>
+        <input id="upload" type="file" hidden>
+        <button id="draft" type="button" hidden>返回工作版本</button>
+      </div>
+    </div>
+    <p id="file-message" class="muted">选择或新建文件以开始编辑。</p>
+    <div id="editor-host" hidden></div>
+    <textarea id="source" aria-label="文件内容" spellcheck="false" autocapitalize="off" hidden></textarea>
+  </aside>
+
+  <aside id="history-drawer" class="drawer history-drawer" hidden aria-labelledby="versions-title">
+    <header class="drawer-head">
+      <h2 id="versions-title">发布历史</h2>
+      <button id="history-close" type="button">关闭</button>
+    </header>
+    <ul id="versions" class="versions" role="list"></ul>
+  </aside>
+
   <dialog id="dialog" aria-labelledby="dialog-title" aria-describedby="dialog-message" closedby="closerequest">
     <form method="dialog" id="dialog-form">
       <h2 id="dialog-title"></h2>
@@ -129,10 +179,11 @@
       </div>
     </form>
   </dialog>
+
   <dialog id="password-dialog" aria-labelledby="password-title" aria-describedby="password-help">
     <form id="password-form">
-      <h2 id="password-title">修改管理口令</h2>
-      <p id="password-help">至少 12 个字符，可用英文字母、数字和英文符号。保存后，MCP 和 API 也需要使用新口令。</p>
+      <h2 id="password-title">修改登录口令</h2>
+      <p id="password-help">至少 12 个字符，可用英文字母、数字和英文符号。保存后只影响管理台登录，API 和 MCP 仍使用各自的令牌。</p>
       <label for="new-password">新口令</label>
       <input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
       <label for="confirm-password">再次输入新口令</label>
@@ -144,6 +195,7 @@
       </div>
     </form>
   </dialog>
+
   <dialog id="mcp-config-dialog" aria-labelledby="mcp-config-title">
     <form method="dialog">
       <h2 id="mcp-config-title">手动复制 MCP 配置</h2>

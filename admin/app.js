@@ -1,5 +1,11 @@
 const $ = id => document.getElementById(id);
 const state = { token: "", pages: [], settings: {}, page: null, version: "", files: [], file: null, busy: false };
+let editor = null;
+let editorKey = "";
+
+function editorValue() {
+  return editor ? editor.state.doc.toString() : $("source").value;
+}
 
 function report(message, error = false) {
   $("status").textContent = message;
@@ -100,7 +106,7 @@ const filesPath = version => pagePath() + (version ? "/versions/" + encodeURICom
 
 function dirty() {
   return Boolean(state.file && !state.file.version && state.file.text !== null
-    && (state.file.tag === "new" || $("source").value !== state.file.text));
+    && (state.file.tag === "new" || editorValue() !== state.file.text));
 }
 
 async function safeToLeave() {
@@ -127,25 +133,39 @@ function renderPages() {
   const select = $("default-page");
   select.replaceChildren(new Option("未设置", ""));
   for (const p of state.pages) {
-    listRow(list, button(p.title, async () => {
+    const card = element("button", undefined, "page-card");
+    card.type = "button";
+    if (p.current) card.classList.add("published");
+    if (p.private) card.classList.add("private");
+    card.append(element("strong", p.title), element("code", "/p/" + p.id + "/"));
+    const status = [p.id === state.settings.defaultPage ? "默认" : "",
+      p.current ? (p.private ? "私有 · 已发布" : "已发布") : "草稿"].filter(Boolean).join(" · ");
+    card.append(element("span", status, "state"));
+    card.addEventListener("click", action(async () => {
       if (p.id === state.page?.id || !await safeToLeave()) return;
       await openPage(p.id);
-    }, p.id === state.page?.id));
+    }));
+    const row = element("li");
+    row.append(card);
+    list.append(row);
     if (p.current && !p.private) select.append(new Option(p.title, p.id));
   }
+  $("wall-empty").hidden = state.pages.length > 0;
   select.value = state.settings.defaultPage || "";
   $("require-api-auth").checked = state.settings.requireApiAuth;
   $("require-mcp-auth").checked = state.settings.requireMcpAuth;
+  $("api-token").value = state.settings.apiToken || "";
   $("mcp-copy-help").textContent = state.settings.requireMcpAuth
-    ? "复制的配置包含管理口令。"
+    ? "复制的配置包含 API 令牌。"
     : "复制的配置只包含连接参数。";
   const info = $("service-info");
   info.replaceChildren();
   for (const [label, value] of [
     ["版本", state.settings.version],
     ["正式站点", state.settings.publicUrl],
-    ["MCP 地址", state.settings.adminUrl + "/mcp"],
+    ["MCP 地址", location.origin + "/mcp"],
   ]) info.append(element("dt", label), element("dd", value));
+  renderMCPConfig();
 }
 
 async function refreshPages() {
@@ -162,11 +182,58 @@ function renderFile() {
   $("source").value = f?.text ?? "";
   if (f && f.text !== null) f.text = $("source").value;
   $("file-message").textContent = !f ? "选择或新建文件以开始编辑。"
-    : f.text === null ? "此文件无法以文本编辑。可下载文件，或上传同名文件覆盖草稿。" : "";
+    : f.text === null ? "此文件无法以文本编辑。可下载文件，或上传同名文件覆盖草稿。"
+      : "Ctrl+S 保存，Tab 缩进。";
   $("file-message").hidden = !$("file-message").textContent;
   $("save").hidden = !editing || f.text === null;
   $("delete-file").hidden = !editing || f.tag === "new";
   $("download").hidden = !f || f.tag === "new";
+  renderEditor(f);
+}
+
+function destroyEditor() {
+  if (editor) editor.destroy();
+  editor = null;
+  editorKey = "";
+  $("editor-host").replaceChildren();
+}
+
+function renderEditor(f) {
+  const host = $("editor-host");
+  if (!f || f.text === null || !window.OpenPageEditor) {
+    destroyEditor();
+    host.hidden = true;
+    $("source").hidden = !f || f.text === null;
+    return;
+  }
+  const key = f.path + "\n" + f.version;
+  host.hidden = false;
+  $("source").hidden = true;
+  if (editor && editorKey === key) return;
+  destroyEditor();
+  editor = window.OpenPageEditor.create(host, {
+    doc: f.text,
+    path: f.path,
+    readOnly: Boolean(f.version),
+    onSave: () => { if (!$("save").hidden) $("save").click(); },
+  });
+  editorKey = key;
+}
+
+async function openFile(path) {
+  if (state.file?.path === path || !await safeToLeave()) return;
+  const response = await request(filesPath(state.version) + "/" + encodedPath(path), { raw: true });
+  const bytes = await response.arrayBuffer();
+  let text = null;
+  try {
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (!decoded.includes("\0")) text = decoded;
+  } catch {
+    // Binary files are offered as downloads.
+  }
+  state.file = { path, text, version: state.version, tag: response.headers.get("ETag") };
+  renderFiles();
+  renderFile();
 }
 
 function renderFiles() {
@@ -177,34 +244,25 @@ function renderFiles() {
   const list = $("files");
   list.replaceChildren();
   for (const path of state.files) {
-    listRow(list, button(path, async () => {
-      if (state.file?.path === path || !await safeToLeave()) return;
-      const response = await request(filesPath(state.version) + "/" + encodedPath(path), { raw: true });
-      const bytes = await response.arrayBuffer();
-      let text = null;
-      try {
-        const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        if (!decoded.includes("\0")) text = decoded;
-      } catch {
-        // Binary files are offered as downloads.
-      }
-      state.file = { path, text, version: state.version, tag: response.headers.get("ETag") };
-      renderFiles();
-      renderFile();
-    }, path === state.file?.path));
+    listRow(list, button(path, () => openFile(path), path === state.file?.path));
   }
 }
 
 function renderPage() {
   $("empty").hidden = Boolean(state.page);
   $("page").hidden = !state.page;
+  $("settings-page").hidden = true;
+  $("back").hidden = !state.page;
+  $("more-menu").hidden = true;
+  $("more-toggle").setAttribute("aria-expanded", "false");
   if (!state.page) return;
   const p = state.page;
   $("page-id").textContent = p.id;
   $("page-title").textContent = p.title;
   $("page-state").textContent = p.current ? "已发布" : "草稿";
   $("page-state").setAttribute("variant", p.current ? "success" : "neutral");
-  $("current").textContent = p.current ? "版本 " + p.current : "";
+  $("current").textContent = p.current ? "版本 " + p.current.slice(0, 8) : "";
+  $("current").title = p.current || "";
   $("visibility").textContent = p.private ? "开启公开访问" : "关闭公开访问";
   $("public-link").hidden = !p.current || p.private;
   $("public-link").href = p.url;
@@ -226,7 +284,9 @@ function renderVersions(versions) {
     const operations = element("div", undefined, "actions");
     operations.append(
       button("查看文件", async () => {
-        if (await safeToLeave()) await openFiles(version.id);
+        if (!await safeToLeave()) return;
+        await openFiles(version.id);
+        $("editor-drawer").hidden = false;
       }),
       button(version.protected ? "取消保护" : "保护", async () => {
         await request(pagePath() + "/versions/" + version.id, { method: "PUT", json: { protected: !version.protected } });
@@ -244,6 +304,7 @@ function renderVersions(versions) {
         if (!await promptDialog("重置草稿？", "当前工作文件将由所选版本替换，编辑器里未保存的内容也会丢失。", [], "重置草稿")) return;
         await request(pagePath() + "/reset", { method: "POST", json: { version: version.id, expected: draft.revision } });
         await openFiles("");
+        await refreshPreview();
         report("草稿已重置");
       }),
     );
@@ -251,6 +312,15 @@ function renderVersions(versions) {
     row.className = "version";
     row.append(operations);
   }
+}
+
+async function refreshPreview() {
+  if (!state.page) {
+    $("preview-frame").removeAttribute("src");
+    return;
+  }
+  const preview = await request(pagePath() + "/preview", { method: "POST" });
+  $("preview-frame").src = preview.url;
 }
 
 async function openPage(id) {
@@ -262,13 +332,70 @@ async function openPage(id) {
   state.version = "";
   state.files = listing.files;
   state.file = null;
-  $("preview-result").hidden = true;
+  history.replaceState(null, "", "#/p/" + encodeURIComponent(id));
   renderPages();
   renderPage();
   renderFiles();
   renderFile();
   renderVersions(versions);
   report("");
+  try {
+    await refreshPreview();
+  } catch (error) {
+    report(error.message, true);
+  }
+}
+
+function showWall() {
+  state.page = null;
+  state.file = null;
+  state.version = "";
+  state.files = [];
+  $("editor-drawer").hidden = true;
+  $("history-drawer").hidden = true;
+  $("preview-frame").removeAttribute("src");
+  history.replaceState(null, "", "#/");
+  renderPage();
+  renderFiles();
+  renderFile();
+  renderVersions([]);
+  report("");
+}
+
+function showSettings() {
+  state.page = null;
+  state.file = null;
+  state.version = "";
+  state.files = [];
+  $("editor-drawer").hidden = true;
+  $("history-drawer").hidden = true;
+  $("preview-frame").removeAttribute("src");
+  $("empty").hidden = true;
+  $("page").hidden = true;
+  $("settings-page").hidden = false;
+  $("back").hidden = false;
+  history.replaceState(null, "", "#/settings");
+  renderPages();
+  report("");
+}
+
+async function route() {
+  if (!state.token) return;
+  if (location.hash === "#/settings") {
+    showSettings();
+    return;
+  }
+  const match = location.hash.match(/^#\/p\/([a-z0-9][a-z0-9-]*)$/);
+  if (!match) {
+    showWall();
+    return;
+  }
+  try {
+    await openPage(match[1]);
+  } catch (error) {
+    report(error.message, true);
+    showWall();
+  }
 }
 
 async function openFiles(version) {
@@ -306,8 +433,10 @@ on("login-form", "submit", async () => {
   $("login-token").value = "";
   $("login").hidden = true;
   $("workspace").hidden = false;
+  $("settings-open").hidden = false;
   $("logout").hidden = false;
-  $("new-page").focus();
+  await route();
+  if (!state.page && $("settings-page").hidden) $("new-page").focus();
   report("已登录");
 });
 on("logout", "click", async () => {
@@ -316,18 +445,56 @@ on("logout", "click", async () => {
     location.reload();
   }
 });
-on("new-page", "click", async () => {
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]);
+}
+
+function starterPage(title) {
+  const name = escapeHTML(title || "新页面");
+  const template = state.settings.starterHtml;
+  if (!template) return "<!doctype html><title>" + name + "</title><h1>" + name + "</h1>\n";
+  return template
+    .replace("<title>OpenPage</title>", "<title>" + name + "</title>")
+    .replace("<h1>OpenPage</h1>", "<h1>" + name + "</h1>");
+}
+
+function makePageID(title) {
+  const base = title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "").slice(0, 40);
+  let id = /^[a-z0-9]/.test(base) ? base : "p-" + randomToken().slice(0, 8);
+  while (state.pages.some(p => p.id === id)) {
+    id = (base || "p").slice(0, 32) + "-" + randomToken().slice(0, 4);
+  }
+  return id;
+}
+
+async function createPage() {
   if (!await safeToLeave()) return;
-  const data = await promptDialog("新建页面", "页面 ID 用于访问地址，创建后固定。", [
-    { name: "id", label: "页面 ID（小写字母、数字和短横线）", pattern: "[a-z0-9][a-z0-9\\-]{0,62}", maxLength: 63 },
+  const data = await promptDialog("新建页面", "标题必填；页面地址留空会按标题自动生成，创建后不能修改。", [
     { name: "title", label: "标题", maxLength: 120 },
+    { name: "id", label: "页面地址（选填）", optional: true, pattern: "[a-z0-9][a-z0-9\\-]{0,62}", maxLength: 63 },
   ], "创建");
   if (!data) return;
+  data.title = data.title.trim();
+  if (!data.title) throw new Error("请填写标题。");
+  data.id = data.id.trim() || makePageID(data.title);
   await request("/pages", { method: "POST", json: data });
+  const html = starterPage(data.title);
+  const saved = await request(pagePath(data.id) + "/files/index.html", {
+    method: "PUT", headers: { "If-None-Match": "*" }, body: html,
+  });
   await refreshPages();
   await openPage(data.id);
-  report("页面已创建");
-});
+  state.file = { path: "index.html", text: html, version: "", tag: '"' + saved.etag + '"' };
+  renderFiles();
+  renderFile();
+  $("editor-drawer").hidden = false;
+  $("source").focus();
+  report("页面已创建，可以直接编辑 index.html");
+}
+$("new-page").addEventListener("click", action(createPage));
 on("rename", "click", async () => {
   const data = await promptDialog("修改标题", "", [
     { name: "title", label: "标题", value: state.page.title, maxLength: 120 },
@@ -338,12 +505,38 @@ on("rename", "click", async () => {
   await refreshPages();
   report("标题已更新");
 });
-on("preview", "click", async () => {
-  const preview = await request(pagePath() + "/preview", { method: "POST" });
-  $("preview-link").href = preview.url;
-  $("preview-result").hidden = false;
-  $("preview-link").focus();
-  report("预览链接已生成，显示已保存的工作文件");
+on("back", "click", async () => {
+  if (await safeToLeave()) showWall();
+});
+on("edit-toggle", "click", async () => {
+  if (!state.file && state.files.includes("index.html")) await openFile("index.html");
+  $("editor-drawer").hidden = false;
+  $("source").focus();
+});
+$("editor-close").addEventListener("click", action(async () => {
+  if (await safeToLeave()) $("editor-drawer").hidden = true;
+}));
+on("history-open", "click", () => {
+  $("history-drawer").hidden = false;
+});
+$("history-close").addEventListener("click", () => {
+  $("history-drawer").hidden = true;
+});
+on("settings-open", "click", () => {
+  showSettings();
+});
+$("more-toggle").addEventListener("click", event => {
+  event.stopPropagation();
+  const menu = $("more-menu");
+  menu.hidden = !menu.hidden;
+  $("more-toggle").setAttribute("aria-expanded", String(!menu.hidden));
+});
+document.addEventListener("click", event => {
+  const menu = $("more-menu");
+  if (!menu.hidden && !event.target.closest(".more")) {
+    menu.hidden = true;
+    $("more-toggle").setAttribute("aria-expanded", "false");
+  }
 });
 on("visibility", "click", async () => {
   const makePrivate = !state.page.private;
@@ -358,11 +551,7 @@ on("visibility", "click", async () => {
 on("publish", "click", async () => {
   if (dirty()) throw new Error("请先保存当前文件，再发布草稿。");
   const listing = await request(filesPath(""));
-  const data = await promptDialog("发布工作版本", "发布后，正在显示页面的浏览器会自动更新。", [
-    { name: "description", label: "版本描述（选填）", optional: true, maxLength: 300 },
-  ], "发布");
-  if (!data) return;
-  const published = await request(pagePath() + "/publish", { method: "POST", json: { ...data, expected: listing.revision } });
+  const published = await request(pagePath() + "/publish", { method: "POST", json: { expected: listing.revision } });
   await refreshHistory();
   report("已发布版本 " + published.id);
 });
@@ -381,7 +570,7 @@ on("new-file", "click", async () => {
 });
 on("save", "click", async () => {
   const file = state.file;
-  const text = $("source").value;
+  const text = editorValue();
   const data = await request(filesPath("") + "/" + encodedPath(file.path), {
     method: "PUT", headers: fileHeaders(file.tag), body: text,
   });
@@ -390,7 +579,19 @@ on("save", "click", async () => {
   $("delete-file").hidden = false;
   $("download").hidden = false;
   await refreshFiles();
+  await refreshPreview();
   report("文件已保存");
+});
+$("source").addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    if (!$("save").hidden) $("save").click();
+    return;
+  }
+  if (event.key === "Tab") {
+    event.preventDefault();
+    event.target.setRangeText("  ", event.target.selectionStart, event.target.selectionEnd, "end");
+  }
 });
 on("delete-file", "click", async () => {
   const file = state.file;
@@ -399,6 +600,7 @@ on("delete-file", "click", async () => {
   state.file = null;
   renderFile();
   await refreshFiles();
+  await refreshPreview();
   report("工作文件已删除");
 });
 on("choose-upload", "click", () => $("upload").click());
@@ -422,6 +624,7 @@ on("upload", "change", async () => {
   state.file = null;
   renderFile();
   await refreshFiles();
+  await refreshPreview();
   report("文件已上传");
 });
 on("download", "click", async () => {
@@ -436,24 +639,39 @@ on("download", "click", async () => {
 });
 on("draft", "click", async () => {
   await openFiles("");
+  await refreshPreview();
   report("已返回工作版本");
 });
 on("delete-page", "click", async () => {
   const p = state.page;
   if (!await promptDialog("删除页面及其发布历史？", p.title + " 的工作文件和所有版本将被删除。", [], "删除页面")) return;
   await request(pagePath() + "?confirm=" + encodeURIComponent(p.id), { method: "DELETE" });
-  state.page = null;
-  state.file = null;
-  renderPage();
   await refreshPages();
+  showWall();
   report("页面已删除");
 });
+function randomToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+on("generate-token", "click", () => {
+  $("api-token").value = randomToken();
+  report("已生成新的 API 令牌，保存设置后生效。");
+});
+
 on("settings-form", "submit", async () => {
-  await request("/settings", { method: "PUT", json: {
+  const data = {
     defaultPage: $("default-page").value,
     requireApiAuth: $("require-api-auth").checked,
     requireMcpAuth: $("require-mcp-auth").checked,
-  } });
+  };
+  const apiToken = $("api-token").value.trim();
+  if (apiToken && apiToken !== state.settings.apiToken) {
+    if (apiToken.length < 24) throw new Error("API 令牌至少 24 个字符。");
+    data.newToken = apiToken;
+  }
+  await request("/settings", { method: "PUT", json: data });
   await refreshPages();
   report("系统设置已保存");
 });
@@ -487,8 +705,7 @@ on("password-form", "submit", async () => {
     await request("/settings", { method: "PUT", json: { newPassword: password } });
     state.token = password;
     $("password-dialog").close();
-    $("preview-result").hidden = true;
-    report("管理口令已修改，下次登录请使用新口令。");
+    report("登录口令已修改，下次登录请使用新口令；API 和 MCP 令牌不受影响。");
   } catch (failure) {
     error.textContent = failure.message;
   } finally {
@@ -499,20 +716,41 @@ on("password-form", "submit", async () => {
 
 
 function mcpConfig() {
-  const url = state.settings.adminUrl + "/mcp";
-  const authorization = state.settings.requireMcpAuth ? "Bearer " + state.token : "";
-  if ($("mcp-format").value === "opencode") {
+  const url = location.origin + "/mcp";
+  const authorization = state.settings.requireMcpAuth ? "Bearer " + state.settings.apiToken : "";
+  const format = $("mcp-format").value;
+  if (format === "opencode") {
     const server = { type: "remote", url, oauth: false };
     if (authorization) server.headers = { Authorization: authorization };
     return JSON.stringify({ mcp: { servers: { openpage: server } } }, null, 2) + "\n";
+  }
+  if (format === "claude") {
+    const server = { type: "http", url };
+    if (authorization) server.headers = { Authorization: authorization };
+    return JSON.stringify({ mcpServers: { openpage: server } }, null, 2) + "\n";
   }
   const lines = ["[mcp_servers.openpage]", "url = " + JSON.stringify(url)];
   if (authorization) lines.push("http_headers = { Authorization = " + JSON.stringify(authorization) + " }");
   return lines.join("\n") + "\n";
 }
 
+function renderMCPConfig() {
+  const preview = $("mcp-config-preview");
+  if (preview) preview.textContent = mcpConfig();
+}
+
+for (const tab of document.querySelectorAll(".format-tabs [data-format]")) {
+  tab.addEventListener("click", () => {
+    $("mcp-format").value = tab.dataset.format;
+    for (const other of document.querySelectorAll(".format-tabs [data-format]")) {
+      other.setAttribute("aria-selected", String(other === tab));
+    }
+    renderMCPConfig();
+  });
+}
+
 on("copy-mcp-config", "click", async () => {
-  const config = mcpConfig();
+  const config = $("mcp-config-preview").textContent || mcpConfig();
   try {
     await navigator.clipboard.writeText(config);
     report("MCP 配置已复制");
@@ -524,4 +762,7 @@ on("copy-mcp-config", "click", async () => {
 });
 $("mcp-config-dialog").addEventListener("close", () => {
   $("mcp-config-text").value = "";
+});
+window.addEventListener("hashchange", () => {
+  if (state.token) route();
 });

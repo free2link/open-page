@@ -13,20 +13,28 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const mcpInstructions = `OpenPage hosts static pages built with HTML, CSS and JavaScript. Reference assets with relative paths. A page must contain index.html at its root to publish.
+
+Choose the page technology for the target browser. Web Components (custom elements, shadow DOM and templates) work in current browsers. If the target browser may be old, or the user has not said which browsers must be supported, use plain HTML and CSS so the page still renders.
+
+Draft workflow: create_page, write_file, list_files to obtain the draft revision, then publish_page with that revision as expected. write_file and delete_file require the current ETag returned by read_file, or "new" when creating a file. Re-read files and revisions after every change instead of reusing old values.
+
+Pages run in a browser sandbox: JavaScript and modules work, but Service Workers and origin storage such as localStorage are unavailable. Preview links are private and expire after 30 minutes.`
+
 func (a *Service) mcp() http.Handler {
-	server := mcp.NewServer(&mcp.Implementation{Name: "OpenPage", Version: appVersion}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "OpenPage", Version: appVersion}, &mcp.ServerOptions{Instructions: mcpInstructions})
 	for _, tool := range []struct{ name, description, fields string }{
-		{"list_pages", "List pages and published URLs", ""},
-		{"create_page", "Create a page and an empty draft", "id title"},
-		{"get_page", "Read page settings and current version", "id"},
-		{"update_page", "Change a page title or restrict public access", "id title? private?"},
+		{"list_pages", "List pages with their public URLs and publish status", ""},
+		{"create_page", "Create a page and an empty draft; id is a lowercase slug", "id title"},
+		{"get_page", "Read page settings, current release and public URL", "id"},
+		{"update_page", "Change a page title or make it private or public", "id title? private?"},
 		{"delete_page", "Delete a non-default page and its history; confirm must be true", "id confirm"},
-		{"list_files", "List files and obtain a draft revision; pass version to inspect history", "id version?"},
-		{"read_file", "Read a file and its ETag; pass version to inspect history", "id path version?"},
-		{"write_file", "Write a draft file; expected is the file ETag or new for creation", "id path expected content encoding?"},
-		{"delete_file", "Delete a draft file using its current ETag as expected", "id path expected"},
-		{"preview_page", "Get a private draft preview URL valid for 30 minutes", "id"},
-		{"publish_page", "Publish a draft; expected is the draft revision returned by list_files", "id expected description?"},
+		{"list_files", "List draft files and return the draft revision required by publish_page and reset_draft; pass version to inspect a release", "id version?"},
+		{"read_file", "Read a file and return its ETag; pass version to inspect a release", "id path version?"},
+		{"write_file", "Write a draft file; expected is the current ETag from read_file, or new when creating the file", "id path expected content encoding?"},
+		{"delete_file", "Delete a draft file; expected is the current ETag from read_file", "id path expected"},
+		{"preview_page", "Create a private draft preview URL valid for 30 minutes", "id"},
+		{"publish_page", "Publish the draft; expected is the latest draft revision from list_files and a root index.html is required", "id expected description?"},
 		{"list_versions", "List release history", "id"},
 		{"protect_version", "Set whether a release is protected from automatic pruning", "id version protected"},
 		{"restore_version", "Publish a historical release again", "id version description?"},

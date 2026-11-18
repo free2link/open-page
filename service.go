@@ -31,6 +31,7 @@ type Command struct {
 	Protected      bool    `json:"protected"`
 	DefaultPage    *string `json:"defaultPage"`
 	NewPassword    *string `json:"newPassword"`
+	NewToken       *string `json:"newToken"`
 	RequireAPIAuth *bool   `json:"requireApiAuth"`
 	RequireMCPAuth *bool   `json:"requireMcpAuth"`
 }
@@ -78,7 +79,7 @@ func (a *Service) execute(op string, c Command) (any, error) {
 		p, err := s.create(c.ID, c.Title)
 		return a.view(p), err
 	case "get_settings", "update_settings":
-		out := map[string]any{"publicUrl": a.origin, "previewUrl": a.origin, "adminUrl": a.origin, "version": appVersion, "retention": retention, "maxFileBytes": maxFile, "maxDraftBytes": maxDraft}
+		out := map[string]any{"publicUrl": a.origin, "previewUrl": a.origin, "adminUrl": a.origin, "version": appVersion, "retention": retention, "maxFileBytes": maxFile, "maxDraftBytes": maxDraft, "apiToken": s.settings.APIToken, "starterHtml": seedPageHTML}
 		if op == "update_settings" {
 			next := s.settings
 			if c.DefaultPage != nil {
@@ -106,10 +107,19 @@ func (a *Service) execute(op string, c Command) (any, error) {
 					strings.TrimSpace(password) != password || strings.IndexFunc(password, func(char rune) bool { return char < 32 || char > 126 }) >= 0 {
 					return nil, fmt.Errorf("%w: password requires 12–256 printable ASCII characters with no surrounding spaces", errInvalid)
 				}
-				next.TokenHash = digest([]byte(password))
-				if next.TokenHash != s.settings.TokenHash {
+				next.AdminHash = digest([]byte(password))
+				if next.AdminHash != s.settings.AdminHash {
 					next.PreviewKey = randomID() + randomID()
 				}
+			}
+			if c.NewToken != nil {
+				token := *c.NewToken
+				if len(token) < 24 || len(token) > 256 || strings.TrimSpace(token) != token ||
+					strings.IndexFunc(token, func(char rune) bool { return char < 32 || char > 126 }) >= 0 {
+					return nil, fmt.Errorf("%w: token requires 24–256 printable ASCII characters with no surrounding spaces", errInvalid)
+				}
+				next.APIToken = token
+				next.TokenHash = digest([]byte(token))
 			}
 			if err := s.writeJSON("config/settings.json", next); err != nil {
 				return nil, err

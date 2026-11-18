@@ -1,21 +1,33 @@
 # OpenPage
 
-OpenPage 是面向个人开发者和家庭 NAS 的自托管网页发布服务。通过管理台、HTTP API 或 MCP 编辑 HTML、CSS、JavaScript 和其他静态文件。工作文件可以单独预览，发布时生成历史版本，已打开的正式页面通过 SSE 自动刷新。
+OpenPage 是面向个人开发者和家庭 NAS 的网页托管服务。除了管理台和 HTTP API，它还提供 MCP：把地址配置给 AI 客户端后，AI 可以直接创建、修改和发布页面，也能继续修改它自己发布过的页面。页面使用 HTML、CSS、JavaScript 和普通静态文件，工作文件可以单独预览，发布时生成历史版本，已打开的正式页面通过 SSE 自动刷新。
 
 ## 快速开始
 
 ### 拉取预构建镜像
 
-新建 `compose.yaml`：
+直接运行：
+
+```sh
+docker run -d --name openpage --restart unless-stopped \
+  -p 3000:3000 \
+  -e OPENPAGE_URL=http://192.168.1.10:3000 \
+  -v /volume1/docker/openpage/data:/data \
+  --read-only \
+  ghcr.io/free2link/open-page:latest
+```
+
+也可以新建 `compose.yaml`：
 
 ```yaml
 services:
   openpage:
     image: ghcr.io/free2link/open-page:latest
     ports:
-      - "${OPENPAGE_HOST_BIND:-127.0.0.1}:3000:3000"
+      - "3000:3000"
     environment:
-      OPENPAGE_URL: "${OPENPAGE_URL:-http://localhost:3000}"
+      # 填浏览器访问 NAS 的地址，用于生成页面和预览链接
+      OPENPAGE_URL: "http://192.168.1.10:3000"
     volumes:
       - "./data:/data"
     read_only: true
@@ -23,7 +35,51 @@ services:
     restart: unless-stopped
 ```
 
-数据保存在 compose 文件旁的 `./data`。首次启动前创建目录并交给容器用户：`mkdir -p data && sudo chown 10001:10001 data`。
+## MCP
+
+MCP 地址为 `http://192.168.1.10:3000/mcp`，使用 Streamable HTTP。新数据目录默认关闭 MCP 鉴权，下面的配置可以直接使用；开启鉴权后，登录管理台「设置」页的「连接 AI」复制带当前令牌的配置。
+
+连接后服务会告诉 AI：页面按目标浏览器选择写法，新浏览器可用 Web Components，目标浏览器较旧或未说明时用普通 HTML/CSS；资源使用相对路径，发布必须有根目录 `index.html`，并把写入、发布所需的 ETag 和 revision 流程一并说明。
+
+OpenCode（`opencode.json`）：
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "openpage": {
+        "type": "remote",
+        "url": "http://192.168.1.10:3000/mcp",
+        "oauth": false
+      }
+    }
+  }
+}
+```
+
+Codex（`~/.codex/config.toml`）：
+
+```toml
+[mcp_servers.openpage]
+url = "http://192.168.1.10:3000/mcp"
+```
+
+Claude Code（项目根目录 `.mcp.json`）：
+
+```json
+{
+  "mcpServers": {
+    "openpage": {
+      "type": "http",
+      "url": "http://192.168.1.10:3000/mcp"
+    }
+  }
+}
+```
+
+开启 MCP 鉴权后，在 OpenCode 和 Claude Code 配置里加 `headers`，在 Codex 配置里加 `http_headers`，值用 API 令牌；管理台「设置」页会直接给出带令牌的完整配置。工具列表可由客户端发现。
+
+典型发布流程为 `create_page` → `write_file` → `list_files` → `publish_page`。新建文件时传入 `expected: "new"`。覆盖文件时使用 `read_file` 返回的 `etag`。二进制内容使用 `encoding: "base64"`。发布和重置草稿使用 `list_files` 返回的 `revision` 作为 `expected`。
 
 启动：
 
@@ -32,7 +88,7 @@ docker compose pull
 docker compose up -d
 ```
 
-拉取预构建镜像不需要 `--build`。首次启动会自动创建并发布默认页面，打开 `http://localhost:3000` 即可看到；管理台在 `/admin/`，新数据目录的初始口令为 `admin`。
+拉取预构建镜像不需要 `--build`。首次启动会自动创建并发布默认页面，浏览器打开 `http://192.168.1.10:3000` 即可看到；管理台在 `/admin/`，新数据目录的初始口令为 `admin`。
 
 ### 从源码构建
 
@@ -55,38 +111,31 @@ docker compose up -d --build
 | 草稿预览 | `/d/{id}/{ticket}/`，由授权请求生成 |
 | 健康检查 | `/healthz` |
 
-新数据目录的默认管理口令是 `admin`，登录后可在系统设置中修改。如需在首次启动前指定口令，在 compose 中增加 `OPENPAGE_TOKEN` 环境变量（至少 24 个字符）。已有数据目录继续使用原来的管理凭据。HTTP API 和 MCP 将同一凭据作为 Bearer Token 发送。
+新数据目录的登录口令和 API 令牌都是 `admin`。首次登录后请在「系统设置」修改登录口令，并按需重新生成 API 令牌：登录口令用于管理台，API 令牌用于 HTTP API 和 MCP。
 
-快速开始使用 `./data` 保存数据，端口默认只发布到本机回环地址。该目录须允许容器用户 `10001:10001` 读写，并支持原子重命名和文件锁。一个数据目录由一个服务实例管理。
+数据保存在 compose 文件旁的 `./data`，目录不存在时 Docker 会自动创建。容器以 root 运行，文件系统须支持原子重命名和文件锁，一个数据目录由一个服务实例管理。
 
-需要其他设备直接访问时，在 Compose 的 `.env` 中设置：
-
-```dotenv
-OPENPAGE_HOST_BIND=0.0.0.0
-OPENPAGE_URL=http://nas.example.lan:3000
-```
-
-通过 HTTPS 反向代理时，`OPENPAGE_URL` 应使用对外的 HTTPS 来源，并为 `/events` 关闭代理缓冲。管理台只在当前页面内存中使用口令。修改管理口令时由用户输入并确认新口令。保存后旧口令和已有预览链接失效。正式页面和草稿在浏览器沙箱内执行，仍可加载静态资源、运行 JavaScript 模块和接收 SSE。同源存储（如 localStorage）及 Service Worker 无法在沙箱内使用。
+通过 HTTPS 反向代理时，`OPENPAGE_URL` 应使用对外的 HTTPS 来源，并为 `/events` 关闭代理缓冲。管理台只在当前页面内存中使用登录口令。修改登录口令后，旧口令和已有预览链接失效，API 令牌不受影响。正式页面和草稿在浏览器沙箱内执行，仍可加载静态资源、运行 JavaScript 模块和接收 SSE。同源存储（如 localStorage）及 Service Worker 无法在沙箱内使用。
 
 ## HTTP API
 
-管理接口默认使用 `Authorization: Bearer <token>`。可在管理台「系统设置」中分别关闭 HTTP API 或 MCP 的口令校验。关闭后，能访问服务的客户端可读写页面和草稿。管理台登录和系统设置仍需要口令。创建页面后，按以下流程写入并发布：
+新数据目录默认不校验 HTTP API 和 MCP，方便本地 AI 直接接入；可在管理台「设置」里分别开启。开启后使用 `Authorization: Bearer <API 令牌>`。关闭期间，能访问服务的客户端可读写页面和草稿，管理台登录和系统设置仍需要登录口令。创建页面后，按以下流程写入并发布：
 
 ```sh
 admin=http://localhost:3000
-OPENPAGE_TOKEN=admin # 使用实际管理口令
+TOKEN=admin # 使用实际 API 令牌
 
-curl -fsS "$admin/api/pages" -H "Authorization: Bearer $OPENPAGE_TOKEN" \
+curl -fsS "$admin/api/pages" -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"id":"dashboard","title":"家庭驾驶舱"}'
 
 curl -fsS "$admin/api/pages/dashboard/files/index.html" -X PUT \
-  -H "Authorization: Bearer $OPENPAGE_TOKEN" -H 'If-None-Match: *' \
+  -H "Authorization: Bearer $TOKEN" -H 'If-None-Match: *' \
   --data-binary @index.html
 
-curl -fsS "$admin/api/pages/dashboard/files" -H "Authorization: Bearer $OPENPAGE_TOKEN"
+curl -fsS "$admin/api/pages/dashboard/files" -H "Authorization: Bearer $TOKEN"
 
 # 将上一步返回的 revision 放入 expected。
-curl -fsS "$admin/api/pages/dashboard/publish" -H "Authorization: Bearer $OPENPAGE_TOKEN" \
+curl -fsS "$admin/api/pages/dashboard/publish" -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"expected":"<revision>","description":"首次发布"}'
 ```
 
@@ -106,15 +155,9 @@ curl -fsS "$admin/api/pages/dashboard/publish" -H "Authorization: Bearer $OPENPA
 | `PUT /api/pages/{id}/versions/{version}` | 用 `{"protected":true}` 保护历史版本 |
 | `POST /api/pages/{id}/restore` | 用 `version` 指定历史版本并重新发布，保留当前草稿 |
 | `POST /api/pages/{id}/reset` | 提交 `version` 和 `expected`，用历史版本替换草稿 |
-| `GET /api/settings`、`PUT /api/settings` | 查询设置，修改 `defaultPage`，用 `requireApiAuth` 和 `requireMcpAuth` 配置接口鉴权，或用 `newPassword` 设置自己选定的管理口令 |
+| `GET /api/settings`、`PUT /api/settings` | 查询设置；修改 `defaultPage`，用 `requireApiAuth` 和 `requireMcpAuth` 配置接口鉴权，用 `newPassword` 改登录口令，用 `newToken` 改 API 令牌 |
 
 发生并发修改时，服务返回 `409`。重新读取相关文件或草稿修订号后，再决定如何合并和重试。预览链接本身授予读取草稿的权限。
-
-## MCP
-
-使用支持 Streamable HTTP（可流式 HTTP）的客户端连接 `http://localhost:3000/mcp`，配置 `Authorization: Bearer <token>`。工具列表可由客户端发现。管理台「系统设置」可直接复制 Codex 或 OpenCode 的配置。开启 MCP 鉴权时，复制内容带有当前管理口令；关闭时仅包含连接参数。
-
-典型发布流程为 `create_page` → `write_file` → `list_files` → `publish_page`。新建文件时传入 `expected: "new"`。覆盖文件时使用 `read_file` 返回的 `etag`。二进制内容使用 `encoding: "base64"`。发布和重置草稿使用 `list_files` 返回的 `revision` 作为 `expected`。
 
 ## 文件、版本和运行
 
