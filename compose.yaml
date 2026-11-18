@@ -1,0 +1,16 @@
+services:
+  openpage:
+    build: .
+    image: openpage:local
+    ports:
+      - "${OPENPAGE_HOST_BIND:-127.0.0.1}:3000:3000"
+    environment:
+      OPENPAGE_TOKEN: "${OPENPAGE_TOKEN:-}"
+      OPENPAGE_URL: "${OPENPAGE_URL:-http://localhost:3000}"
+    volumes:
+      - "${OPENPAGE_VOLUME:-openpage-data}:/data"
+    read_only: true
+    init: false
+    restart: unless-stopped
+volumes:
+  openpage-data:

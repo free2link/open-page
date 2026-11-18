@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenPage · 管理台</title>
+  <link rel="stylesheet" href="vendor/styles/webawesome.css">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="vendor/components/badge/badge.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">跳到主要内容</a>
+  <header class="masthead">
+    <a href="./" class="brand">Open<span>Page</span></a>
+    <span class="subtitle">页面管理台</span>
+    <button id="logout" type="button" hidden>退出管理台</button>
+  </header>
+  <main id="main-content" tabindex="-1">
+    <p id="status" role="status" class="status"></p>
+    <section id="login" class="login panel">
+      <h1>登录管理台</h1>
+      <form id="login-form">
+        <label for="login-token">管理口令</label>
+        <input id="login-token" type="password" required autocomplete="off" spellcheck="false">
+        <button class="primary">登录</button>
+      </form>
+    </section>
+    <div id="workspace" class="workspace" hidden>
+      <aside class="panel sidebar" aria-labelledby="pages-title">
+        <div class="heading">
+          <h2 id="pages-title">页面</h2>
+          <button id="new-page" type="button">新建</button>
+        </div>
+        <ul id="pages" class="items"></ul>
+        <details class="settings">
+            <summary>系统设置</summary>
+          <form id="settings-form">
+            <label for="default-page">默认页面</label>
+            <select id="default-page"></select>
+            <button>保存默认页面</button>
+          </form>
+          <dl id="service-info"></dl>
+          <button id="rotate" type="button">更新访问令牌</button>
+        </details>
+      </aside>
+      <section id="empty" class="panel empty">
+        <h1>选择一个页面</h1>
+        <p>也可以新建页面，然后添加入口文件 index.html。</p>
+      </section>
+      <section id="page" class="page" hidden aria-labelledby="page-title">
+        <header class="panel page-header">
+          <div class="heading">
+            <div>
+              <p id="page-id" class="kicker"></p>
+              <h1 id="page-title"></h1>
+              <p class="muted"><wa-badge id="page-state"></wa-badge> <span id="current"></span></p>
+            </div>
+            <div class="actions">
+              <button id="rename" type="button">改名</button>
+              <button id="visibility" type="button">关闭公开访问</button>
+              <button id="preview" type="button">预览草稿</button>
+              <a id="public-link" class="button" target="_blank" rel="noopener noreferrer">打开正式页面</a>
+              <button id="publish" class="primary" type="button">发布</button>
+            </div>
+          </div>
+          <div id="preview-result" hidden>
+            <a id="preview-link" target="_blank" rel="noopener noreferrer">打开已生成的预览链接</a>
+            <span class="muted">链接 30 分钟内有效</span>
+          </div>
+        </header>
+        <div class="editor-grid panel">
+          <section class="files" aria-labelledby="files-title">
+            <div class="heading">
+              <h2 id="files-title">工作文件</h2>
+              <button id="new-file" type="button">新建</button>
+            </div>
+            <input id="upload" type="file" hidden>
+            <button id="choose-upload" type="button">上传文件</button>
+            <button id="draft" type="button" hidden>返回工作版本</button>
+            <ul id="files" class="items"></ul>
+          </section>
+          <section class="editor" aria-labelledby="file-name">
+            <div class="heading">
+              <h2 id="file-name">文件编辑器</h2>
+              <div class="actions">
+                <button id="download" type="button" hidden>下载</button>
+                <button id="delete-file" type="button" hidden>删除</button>
+                <button id="save" class="primary" type="button" hidden>保存文件</button>
+              </div>
+            </div>
+            <p id="file-message" class="muted">选择或新建文件以开始编辑。</p>
+            <textarea id="source" aria-label="文件内容" spellcheck="false" autocapitalize="off" hidden></textarea>
+          </section>
+        </div>
+        <section class="panel releases" aria-labelledby="versions-title">
+          <div class="heading">
+            <h2 id="versions-title">发布历史</h2>
+            <button id="delete-page" class="danger" type="button">删除页面</button>
+          </div>
+          <ul id="versions" class="versions"></ul>
+        </section>
+      </section>
+    </div>
+  </main>
+  <dialog id="dialog" aria-labelledby="dialog-title" aria-describedby="dialog-message" closedby="closerequest">
+    <form method="dialog" id="dialog-form">
+      <h2 id="dialog-title"></h2>
+      <p id="dialog-message"></p>
+      <div id="dialog-fields"></div>
+      <div class="actions">
+        <button id="cancel-dialog" value="cancel" formnovalidate autofocus>取消</button>
+        <button id="confirm-dialog" value="confirm" class="primary">确认</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
