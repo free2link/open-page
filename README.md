@@ -15,16 +15,15 @@ services:
     ports:
       - "${OPENPAGE_HOST_BIND:-127.0.0.1}:3000:3000"
     environment:
-      OPENPAGE_TOKEN: "${OPENPAGE_TOKEN:-}"
       OPENPAGE_URL: "${OPENPAGE_URL:-http://localhost:3000}"
     volumes:
-      - "${OPENPAGE_VOLUME:-openpage-data}:/data"
+      - "./data:/data"
     read_only: true
     init: false
     restart: unless-stopped
-volumes:
-  openpage-data:
 ```
+
+数据保存在 compose 文件旁的 `./data`。首次启动前创建目录并交给容器用户：`mkdir -p data && sudo chown 10001:10001 data`。
 
 启动：
 
@@ -56,14 +55,13 @@ docker compose up -d --build
 | 草稿预览 | `/d/{id}/{ticket}/`，由授权请求生成 |
 | 健康检查 | `/healthz` |
 
-新数据目录的默认管理口令是 `admin`。可以在首次部署前设置 `OPENPAGE_TOKEN`，或登录后在系统设置中更新口令。已有数据目录继续使用原来的管理凭据。HTTP API 和 MCP 将同一凭据作为 Bearer Token 发送。
+新数据目录的默认管理口令是 `admin`，登录后可在系统设置中修改。如需在首次启动前指定口令，在 compose 中增加 `OPENPAGE_TOKEN` 环境变量（至少 24 个字符）。已有数据目录继续使用原来的管理凭据。HTTP API 和 MCP 将同一凭据作为 Bearer Token 发送。
 
-默认使用 Docker 命名卷 `openpage-data`，并仅将端口发布到本机回环地址。部署到 NAS 时，可通过 `OPENPAGE_VOLUME` 指定宿主机目录。该目录须允许容器用户 `10001:10001` 读写，并支持原子重命名和文件锁。一个数据目录由一个服务实例管理。
+快速开始使用 `./data` 保存数据，端口默认只发布到本机回环地址。该目录须允许容器用户 `10001:10001` 读写，并支持原子重命名和文件锁。一个数据目录由一个服务实例管理。
 
-需要其他设备直接访问时，可以在 Compose 的 `.env` 中配置以下变量，并在首次部署时设置自定义口令：
+需要其他设备直接访问时，在 Compose 的 `.env` 中设置：
 
 ```dotenv
-OPENPAGE_VOLUME=/volume1/openpage
 OPENPAGE_HOST_BIND=0.0.0.0
 OPENPAGE_URL=http://nas.example.lan:3000
 ```
@@ -79,16 +77,16 @@ admin=http://localhost:3000
 OPENPAGE_TOKEN=admin # 使用实际管理口令
 
 curl -fsS "$admin/api/pages" -H "Authorization: Bearer $OPENPAGE_TOKEN" \
-  -H 'Content-Type: application/json' -d '{"id":"home","title":"家庭驾驶舱"}'
+  -H 'Content-Type: application/json' -d '{"id":"dashboard","title":"家庭驾驶舱"}'
 
-curl -fsS "$admin/api/pages/home/files/index.html" -X PUT \
+curl -fsS "$admin/api/pages/dashboard/files/index.html" -X PUT \
   -H "Authorization: Bearer $OPENPAGE_TOKEN" -H 'If-None-Match: *' \
   --data-binary @index.html
 
-curl -fsS "$admin/api/pages/home/files" -H "Authorization: Bearer $OPENPAGE_TOKEN"
+curl -fsS "$admin/api/pages/dashboard/files" -H "Authorization: Bearer $OPENPAGE_TOKEN"
 
 # 将上一步返回的 revision 放入 expected。
-curl -fsS "$admin/api/pages/home/publish" -H "Authorization: Bearer $OPENPAGE_TOKEN" \
+curl -fsS "$admin/api/pages/dashboard/publish" -H "Authorization: Bearer $OPENPAGE_TOKEN" \
   -H 'Content-Type: application/json' -d '{"expected":"<revision>","description":"首次发布"}'
 ```
 
