@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -54,7 +55,17 @@ func decodeCommand(body io.Reader, c *Command) error {
 	return nil
 }
 
-func (a *Service) authorized(next http.Handler) http.Handler {
+type authenticatedKey struct{}
+
+type accessMode uint8
+
+const (
+	adminAccess accessMode = iota
+	apiAccess
+	mcpAccess
+)
+
+func (a *Service) authorized(next http.Handler, mode accessMode) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -66,19 +77,29 @@ func (a *Service) authorized(next http.Handler) http.Handler {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		a.store.mu.RLock()
 		valid := ok && subtle.ConstantTimeCompare([]byte(digest([]byte(token))), []byte(a.store.settings.TokenHash)) == 1
+		optional := (mode == apiAccess && a.store.settings.APIAuthDisabled) ||
+			(mode == mcpAccess && a.store.settings.MCPAuthDisabled)
 		a.store.mu.RUnlock()
-		if !valid {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="OpenPage"`)
-			writeJSON(w, 401, map[string]string{"error": "valid access token required"})
+		if !valid && !optional {
+			requirePassword(w)
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequest)
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authenticatedKey{}, valid)))
 	})
+}
+
+func requirePassword(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", `Bearer realm="OpenPage"`)
+	writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "valid access token required"})
 }
 
 func (a *Service) endpoint(op string, body bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if (op == "get_settings" || op == "update_settings") && r.Context().Value(authenticatedKey{}) != true {
+			requirePassword(w)
+			return
+		}
 		var c Command
 		if body {
 			if err := decodeCommand(r.Body, &c); err != nil {
@@ -162,5 +183,5 @@ func (a *Service) api() http.Handler {
 	} {
 		mux.HandleFunc(route.pattern, a.endpoint(route.op, route.body))
 	}
-	return a.authorized(mux)
+	return mux
 }

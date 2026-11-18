@@ -214,12 +214,17 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	call("GET", signed.URL, "", nil, 200)
 	call("PUT", root+"/kiosk", `{"private":false}`, nil, 200)
 	call("PUT", server.URL+"/api/settings", `{"defaultPage":"kiosk"}`, nil, 200)
-	rotation, _ := call("PUT", server.URL+"/api/settings", `{"rotateToken":true}`, nil, 200)
-	var credential struct{ Token string }
-	if err := json.Unmarshal(rotation, &credential); err != nil || credential.Token == "" {
-		t.Fatalf("rotation failed: %v", err)
+	call("PUT", server.URL+"/api/settings", `{"rotateToken":true}`, nil, 400)
+	call("PUT", server.URL+"/api/settings", `{"newPassword":"short"}`, nil, 400)
+	call("GET", root, "", nil, 200)
+	const newPassword = "a-chosen-test-password"
+	responseBody, _ := call("PUT", server.URL+"/api/settings", fmt.Sprintf(`{"newPassword":%q}`, newPassword), nil, 200)
+	if strings.Contains(string(responseBody), newPassword) {
+		t.Fatal("settings response disclosed the password")
 	}
 	call("GET", root, "", nil, 401)
+	client.Transport = authTransport{newPassword}
+	call("GET", root, "", nil, 200)
 	call("GET", signed.URL, "", nil, 404)
 
 	store.close()
@@ -230,7 +235,7 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	}
 	defer reopened.close()
 	p, err := reopened.load("kiosk")
-	if err != nil || p.Current != restoredVersion.ID || reopened.settings.DefaultPage != "kiosk" || reopened.settings.TokenHash != digest([]byte(credential.Token)) {
+	if err != nil || p.Current != restoredVersion.ID || reopened.settings.DefaultPage != "kiosk" || reopened.settings.TokenHash != digest([]byte(newPassword)) {
 		t.Fatalf("incorrect persisted state: %v %v", p, err)
 	}
 }
@@ -384,4 +389,59 @@ func TestExistingCredentialSurvivesPreviewKeyMigration(t *testing.T) {
 	if migrated.settings.TokenHash != digest([]byte(testToken)) || migrated.settings.PreviewKey == "" {
 		t.Fatal("migration must retain the configured credential and create a preview key")
 	}
+}
+
+func TestOptionalExternalAuthenticationKeepsAdminProtected(t *testing.T) {
+	store, err := openStore(t.TempDir(), testToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.close()
+	a := &Service{store: store, origin: "http://localhost:3000"}
+	handler := a.handler()
+	call := func(method, path, body, token, origin string, expected int) string {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		if res.Code != expected {
+			t.Fatalf("%s %s: got %d, expected %d: %s", method, path, res.Code, expected, res.Body.String())
+		}
+		return res.Body.String()
+	}
+	const listMCP = `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_pages","arguments":{}}}`
+	const settingsMCP = `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_settings","arguments":{}}}`
+	const settings = "/admin/api/settings"
+	call("GET", "/api/pages", "", "", "", 401)
+	call("POST", "/mcp", listMCP, "", "", 401)
+
+	call("PUT", settings, `{"requireApiAuth":false}`, testToken, "", 200)
+	call("POST", "/api/pages", `{"id":"demo","title":"Demo"}`, "", "", 201)
+	call("POST", "/mcp", listMCP, "", "", 401)
+	call("GET", "/admin/api/pages", "", "", "", 401)
+	call("PUT", "/api/settings", `{"newPassword":"another-password"}`, "", "", 401)
+	call("POST", "/api/pages", `{"id":"foreign","title":"Foreign"}`, "", "null", 403)
+
+	call("PUT", settings, `{"requireApiAuth":true,"requireMcpAuth":false}`, testToken, "", 200)
+	call("GET", "/api/pages", "", "", "", 401)
+	if result := call("POST", "/mcp", listMCP, "", "", 200); !strings.Contains(result, "demo") {
+		t.Fatalf("open MCP could not list pages: %s", result)
+	}
+	if result := call("POST", "/mcp", settingsMCP, "", "", 200); !strings.Contains(result, "management password required") {
+		t.Fatalf("MCP exposed system settings to an anonymous caller: %s", result)
+	}
+	if result := call("POST", "/mcp", settingsMCP, testToken, "", 200); !strings.Contains(result, "requireMcpAuth") {
+		t.Fatalf("authenticated MCP could not read system settings: %s", result)
+	}
+	call("POST", "/mcp", listMCP, "", "null", 403)
+	call("PUT", settings, `{"requireMcpAuth":true}`, testToken, "", 200)
+	call("POST", "/mcp", listMCP, "", "", 401)
 }

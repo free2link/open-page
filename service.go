@@ -18,19 +18,21 @@ type Service struct {
 }
 
 type Command struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	Private     *bool   `json:"private"`
-	Path        string  `json:"path"`
-	Version     string  `json:"version"`
-	Expected    string  `json:"expected"`
-	Description string  `json:"description"`
-	Content     *string `json:"content"`
-	Encoding    string  `json:"encoding"`
-	Confirm     bool    `json:"confirm"`
-	Protected   bool    `json:"protected"`
-	DefaultPage *string `json:"defaultPage"`
-	RotateToken bool    `json:"rotateToken"`
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	Private        *bool   `json:"private"`
+	Path           string  `json:"path"`
+	Version        string  `json:"version"`
+	Expected       string  `json:"expected"`
+	Description    string  `json:"description"`
+	Content        *string `json:"content"`
+	Encoding       string  `json:"encoding"`
+	Confirm        bool    `json:"confirm"`
+	Protected      bool    `json:"protected"`
+	DefaultPage    *string `json:"defaultPage"`
+	NewPassword    *string `json:"newPassword"`
+	RequireAPIAuth *bool   `json:"requireApiAuth"`
+	RequireMCPAuth *bool   `json:"requireMcpAuth"`
 }
 
 type PageView struct {
@@ -92,11 +94,22 @@ func (a *Service) execute(op string, c Command) (any, error) {
 				}
 				next.DefaultPage = id
 			}
-			if c.RotateToken {
-				token := randomID() + randomID()
-				next.TokenHash = digest([]byte(token))
-				next.PreviewKey = randomID() + randomID()
-				out["token"] = token
+			if c.RequireAPIAuth != nil {
+				next.APIAuthDisabled = !*c.RequireAPIAuth
+			}
+			if c.RequireMCPAuth != nil {
+				next.MCPAuthDisabled = !*c.RequireMCPAuth
+			}
+			if c.NewPassword != nil {
+				password := *c.NewPassword
+				if len(password) < 12 || len(password) > 256 ||
+					strings.TrimSpace(password) != password || strings.IndexFunc(password, func(char rune) bool { return char < 32 || char > 126 }) >= 0 {
+					return nil, fmt.Errorf("%w: password requires 12–256 printable ASCII characters with no surrounding spaces", errInvalid)
+				}
+				next.TokenHash = digest([]byte(password))
+				if next.TokenHash != s.settings.TokenHash {
+					next.PreviewKey = randomID() + randomID()
+				}
 			}
 			if err := s.writeJSON("config/settings.json", next); err != nil {
 				return nil, err
@@ -108,6 +121,8 @@ func (a *Service) execute(op string, c Command) (any, error) {
 			}
 		}
 		out["defaultPage"] = s.settings.DefaultPage
+		out["requireApiAuth"] = !s.settings.APIAuthDisabled
+		out["requireMcpAuth"] = !s.settings.MCPAuthDisabled
 		return out, nil
 	}
 

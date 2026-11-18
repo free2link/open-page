@@ -65,9 +65,11 @@ type pageDisk struct {
 }
 
 type Settings struct {
-	DefaultPage string `json:"defaultPage"`
-	TokenHash   string `json:"tokenHash"`
-	PreviewKey  string `json:"previewKey"`
+	DefaultPage     string `json:"defaultPage"`
+	TokenHash       string `json:"tokenHash"`
+	PreviewKey      string `json:"previewKey"`
+	APIAuthDisabled bool   `json:"apiAuthDisabled,omitempty"`
+	MCPAuthDisabled bool   `json:"mcpAuthDisabled,omitempty"`
 }
 
 type Store struct {

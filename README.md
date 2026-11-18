@@ -35,11 +35,11 @@ OPENPAGE_HOST_BIND=0.0.0.0
 OPENPAGE_URL=http://nas.example.lan:3000
 ```
 
-通过 HTTPS 反向代理时，`OPENPAGE_URL` 应使用对外的 HTTPS 来源，并为 `/events` 关闭代理缓冲。管理台只在当前页面内存中使用口令。更新令牌会撤销旧令牌及已有预览链接。正式页面和草稿在浏览器沙箱内执行，仍可加载静态资源、运行 JavaScript 模块和接收 SSE。同源存储（如 localStorage）及 Service Worker 无法在沙箱内使用。
+通过 HTTPS 反向代理时，`OPENPAGE_URL` 应使用对外的 HTTPS 来源，并为 `/events` 关闭代理缓冲。管理台只在当前页面内存中使用口令。修改管理口令时由用户输入并确认新口令。保存后旧口令和已有预览链接失效。正式页面和草稿在浏览器沙箱内执行，仍可加载静态资源、运行 JavaScript 模块和接收 SSE。同源存储（如 localStorage）及 Service Worker 无法在沙箱内使用。
 
 ## HTTP API
 
-管理接口使用 `Authorization: Bearer <token>`，均位于管理来源。创建页面后，按以下流程写入并发布：
+管理接口默认使用 `Authorization: Bearer <token>`。可在管理台「系统设置」中分别关闭 HTTP API 或 MCP 的口令校验。关闭后，能访问服务的客户端可读写页面和草稿。管理台登录和系统设置仍需要口令。创建页面后，按以下流程写入并发布：
 
 ```sh
 admin=http://localhost:3000
@@ -75,13 +75,13 @@ curl -fsS "$admin/api/pages/home/publish" -H "Authorization: Bearer $OPENPAGE_TO
 | `PUT /api/pages/{id}/versions/{version}` | 用 `{"protected":true}` 保护历史版本 |
 | `POST /api/pages/{id}/restore` | 用 `version` 指定历史版本并重新发布，保留当前草稿 |
 | `POST /api/pages/{id}/reset` | 提交 `version` 和 `expected`，用历史版本替换草稿 |
-| `GET /api/settings`、`PUT /api/settings` | 查询设置，修改 `defaultPage`，或用 `rotateToken: true` 更新令牌 |
+| `GET /api/settings`、`PUT /api/settings` | 查询设置，修改 `defaultPage`，用 `requireApiAuth` 和 `requireMcpAuth` 配置接口鉴权，或用 `newPassword` 设置自己选定的管理口令 |
 
 发生并发修改时，服务返回 `409`。重新读取相关文件或草稿修订号后，再决定如何合并和重试。预览链接本身授予读取草稿的权限。
 
 ## MCP
 
-使用支持 Streamable HTTP（可流式 HTTP）的客户端连接 `http://localhost:3000/mcp`，配置 `Authorization: Bearer <token>`。工具列表可由客户端发现。
+使用支持 Streamable HTTP（可流式 HTTP）的客户端连接 `http://localhost:3000/mcp`，配置 `Authorization: Bearer <token>`。工具列表可由客户端发现。管理台「系统设置」可直接复制 Codex 或 OpenCode 的配置。开启 MCP 鉴权时，复制内容带有当前管理口令；关闭时仅包含连接参数。
 
 典型发布流程为 `create_page` → `write_file` → `list_files` → `publish_page`。新建文件时传入 `expected: "new"`。覆盖文件时使用 `read_file` 返回的 `etag`。二进制内容使用 `encoding: "base64"`。发布和重置草稿使用 `list_files` 返回的 `revision` 作为 `expected`。
 

@@ -65,11 +65,16 @@ func (a *Service) handler() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		http.StripPrefix("/admin/", static).ServeHTTP(w, r)
 	})
-	api, mcp := a.api(), a.mcp()
+	api := a.api()
+	adminAPI := http.StripPrefix("/admin", a.authorized(api, adminAccess))
+	externalAPI := a.authorized(api, apiAccess)
+	mcp := a.mcp()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasPrefix(r.URL.Path, "/admin/api/"):
+			adminAPI.ServeHTTP(w, r)
 		case strings.HasPrefix(r.URL.Path, "/api/"):
-			api.ServeHTTP(w, r)
+			externalAPI.ServeHTTP(w, r)
 		case r.URL.Path == "/mcp":
 			mcp.ServeHTTP(w, r)
 		default:

@@ -34,14 +34,29 @@
         </div>
         <ul id="pages" class="items"></ul>
         <details class="settings">
-            <summary>系统设置</summary>
+          <summary>系统设置</summary>
           <form id="settings-form">
             <label for="default-page">默认页面</label>
             <select id="default-page"></select>
-            <button>保存默认页面</button>
+            <fieldset class="access-settings" aria-describedby="access-help">
+              <legend>接口鉴权</legend>
+              <label><input id="require-api-auth" type="checkbox"> HTTP API 需要口令</label>
+              <label><input id="require-mcp-auth" type="checkbox"> MCP 需要口令</label>
+            </fieldset>
+            <p id="access-help" class="muted">关闭后，能访问服务的客户端可直接操作页面和草稿。管理台和系统设置仍需口令。</p>
+            <button>保存设置</button>
           </form>
           <dl id="service-info"></dl>
-          <button id="rotate" type="button">更新访问令牌</button>
+          <div class="mcp-settings">
+            <label for="mcp-format">MCP 配置格式</label>
+            <select id="mcp-format">
+              <option value="codex">Codex · config.toml</option>
+              <option value="opencode">OpenCode · opencode.json</option>
+            </select>
+            <button id="copy-mcp-config" type="button">复制 MCP 配置</button>
+            <p id="mcp-copy-help" class="muted"></p>
+          </div>
+          <button id="change-password" type="button">修改管理口令</button>
         </details>
       </aside>
       <section id="empty" class="panel empty">
@@ -112,6 +127,29 @@
         <button id="cancel-dialog" value="cancel" formnovalidate autofocus>取消</button>
         <button id="confirm-dialog" value="confirm" class="primary">确认</button>
       </div>
+    </form>
+  </dialog>
+  <dialog id="password-dialog" aria-labelledby="password-title" aria-describedby="password-help">
+    <form id="password-form">
+      <h2 id="password-title">修改管理口令</h2>
+      <p id="password-help">至少 12 个字符，可用英文字母、数字和英文符号。保存后，MCP 和 API 也需要使用新口令。</p>
+      <label for="new-password">新口令</label>
+      <input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+      <label for="confirm-password">再次输入新口令</label>
+      <input id="confirm-password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required>
+      <p id="password-error" class="danger" role="alert"></p>
+      <div class="actions">
+        <button id="cancel-password" type="button" autofocus>取消</button>
+        <button id="save-password" class="primary">保存新口令</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="mcp-config-dialog" aria-labelledby="mcp-config-title">
+    <form method="dialog">
+      <h2 id="mcp-config-title">手动复制 MCP 配置</h2>
+      <label for="mcp-config-text">浏览器未授权写入剪贴板，请复制下方内容。</label>
+      <textarea id="mcp-config-text" rows="8" readonly></textarea>
+      <div class="actions"><button>关闭</button></div>
     </form>
   </dialog>
 </body>

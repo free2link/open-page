@@ -33,7 +33,7 @@ func (a *Service) mcp() http.Handler {
 		{"reset_draft", "Replace the draft from a release; expected is the draft revision returned by list_files", "id version expected"},
 		{"get_page_url", "Get the stable public URL", "id"},
 		{"get_settings", "Read service settings", ""},
-		{"update_settings", "Set or clear the default page, or rotate and revoke the current API token", "defaultPage? rotateToken?"},
+		{"update_settings", "Set or clear the default page, or set a chosen management password", "defaultPage? newPassword?"},
 	} {
 		properties := map[string]map[string]string{}
 		required := []string{}
@@ -41,7 +41,7 @@ func (a *Service) mcp() http.Handler {
 			name := strings.TrimSuffix(field, "?")
 			kind := "string"
 			switch name {
-			case "confirm", "protected", "rotateToken", "private":
+			case "confirm", "protected", "private":
 				kind = "boolean"
 			}
 			properties[name] = map[string]string{"type": kind}
@@ -51,7 +51,10 @@ func (a *Service) mcp() http.Handler {
 		}
 		server.AddTool(&mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{
 			"type": "object", "properties": properties, "required": required, "additionalProperties": false,
-		}}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if (tool.name == "get_settings" || tool.name == "update_settings") && ctx.Value(authenticatedKey{}) != true {
+				return toolFailure("management password required for system settings"), nil
+			}
 			args := req.Params.Arguments
 			if len(args) == 0 {
 				args = json.RawMessage("{}")
@@ -99,7 +102,7 @@ func (a *Service) mcp() http.Handler {
 		})
 	}
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
-	return a.authorized(handler)
+	return a.authorized(handler, mcpAccess)
 }
 
 func toolFailure(message string) *mcp.CallToolResult {

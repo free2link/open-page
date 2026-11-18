@@ -15,7 +15,7 @@ async function request(path, { method = "GET", json, body, headers = {}, raw = f
     options.body = JSON.stringify(json);
     options.headers["Content-Type"] = "application/json";
   }
-  const response = await fetch("/api" + path, options);
+  const response = await fetch("/admin/api" + path, options);
   if (!response.ok) {
     const failure = await response.json().catch(() => ({}));
     throw new Error(failure.error || "请求失败（" + response.status + "）");
@@ -134,13 +134,17 @@ function renderPages() {
     if (p.current && !p.private) select.append(new Option(p.title, p.id));
   }
   select.value = state.settings.defaultPage || "";
+  $("require-api-auth").checked = state.settings.requireApiAuth;
+  $("require-mcp-auth").checked = state.settings.requireMcpAuth;
+  $("mcp-copy-help").textContent = state.settings.requireMcpAuth
+    ? "复制的配置包含管理口令。"
+    : "复制的配置只包含连接参数。";
   const info = $("service-info");
   info.replaceChildren();
   for (const [label, value] of [
     ["版本", state.settings.version],
     ["正式站点", state.settings.publicUrl],
     ["MCP 地址", state.settings.adminUrl + "/mcp"],
-    ["访问权限", "页面可单独设置公开访问。管理操作使用访问令牌。预览链接有效期为 30 分钟。"],
   ]) info.append(element("dt", label), element("dd", value));
 }
 
@@ -445,31 +449,79 @@ on("delete-page", "click", async () => {
   report("页面已删除");
 });
 on("settings-form", "submit", async () => {
-  await request("/settings", { method: "PUT", json: { defaultPage: $("default-page").value } });
+  await request("/settings", { method: "PUT", json: {
+    defaultPage: $("default-page").value,
+    requireApiAuth: $("require-api-auth").checked,
+    requireMcpAuth: $("require-mcp-auth").checked,
+  } });
   await refreshPages();
-  report("默认页面设置已保存");
+  report("系统设置已保存");
 });
-on("rotate", "click", async () => {
-  if (!await promptDialog("更新访问令牌？", "现有令牌和预览链接会立即失效。新令牌仅在更新后显示，请复制留存。", [], "更新令牌")) return;
-  const result = await request("/settings", { method: "PUT", json: { rotateToken: true } });
-  state.token = result.token;
-  $("dialog-title").textContent = "复制新访问令牌";
-  $("dialog-message").textContent = "";
-  $("dialog-fields").replaceChildren();
-  const secret = element("input");
-  secret.setAttribute("aria-label", "新访问令牌");
-  secret.readOnly = true;
-  secret.value = result.token;
-  $("dialog-fields").append(secret);
-  $("cancel-dialog").hidden = true;
-  $("confirm-dialog").textContent = "完成";
-  const dialog = $("dialog");
-  dialog.showModal();
-  secret.focus();
-  secret.select();
-  await new Promise(resolve => dialog.addEventListener("close", resolve, { once: true }));
-  $("dialog-fields").replaceChildren();
-  $("cancel-dialog").hidden = false;
-  $("preview-result").hidden = true;
-  report("访问令牌已更新");
+on("change-password", "click", () => {
+  $("password-form").reset();
+  $("password-error").textContent = "";
+  $("password-dialog").showModal();
+});
+$("cancel-password").addEventListener("click", () => $("password-dialog").close());
+$("password-dialog").addEventListener("close", () => $("password-form").reset());
+$("password-dialog").addEventListener("cancel", event => {
+  if ($("save-password").disabled) event.preventDefault();
+});
+on("password-form", "submit", async () => {
+  const password = $("new-password").value;
+  const error = $("password-error");
+  error.textContent = "";
+  if (!/^[ -~]{12,256}$/.test(password) || password.trim() !== password) {
+    error.textContent = "请输入 12 至 256 个英文字符，首尾不能有空格。";
+    $("new-password").focus();
+    return;
+  }
+  if (password !== $("confirm-password").value) {
+    error.textContent = "两次输入的口令不一致。";
+    $("confirm-password").focus();
+    return;
+  }
+  const controls = [$("save-password"), $("cancel-password"), $("new-password"), $("confirm-password")];
+  controls.forEach(control => { control.disabled = true; });
+  try {
+    await request("/settings", { method: "PUT", json: { newPassword: password } });
+    state.token = password;
+    $("password-dialog").close();
+    $("preview-result").hidden = true;
+    report("管理口令已修改，下次登录请使用新口令。");
+  } catch (failure) {
+    error.textContent = failure.message;
+  } finally {
+    controls.forEach(control => { control.disabled = false; });
+    if ($("password-dialog").open) $("save-password").focus();
+  }
+});
+
+
+function mcpConfig() {
+  const url = state.settings.adminUrl + "/mcp";
+  const authorization = state.settings.requireMcpAuth ? "Bearer " + state.token : "";
+  if ($("mcp-format").value === "opencode") {
+    const server = { type: "remote", url, oauth: false };
+    if (authorization) server.headers = { Authorization: authorization };
+    return JSON.stringify({ mcp: { servers: { openpage: server } } }, null, 2) + "\n";
+  }
+  const lines = ["[mcp_servers.openpage]", "url = " + JSON.stringify(url)];
+  if (authorization) lines.push("http_headers = { Authorization = " + JSON.stringify(authorization) + " }");
+  return lines.join("\n") + "\n";
+}
+
+on("copy-mcp-config", "click", async () => {
+  const config = mcpConfig();
+  try {
+    await navigator.clipboard.writeText(config);
+    report("MCP 配置已复制");
+  } catch {
+    $("mcp-config-text").value = config;
+    $("mcp-config-dialog").showModal();
+    $("mcp-config-text").select();
+  }
+});
+$("mcp-config-dialog").addEventListener("close", () => {
+  $("mcp-config-text").value = "";
 });
