@@ -210,7 +210,7 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	call("PUT", root+"/kiosk", `{"private":true}`, nil, 400)
 	call("PUT", server.URL+"/api/settings", `{"defaultPage":""}`, nil, 200)
 	call("PUT", root+"/kiosk", `{"private":true}`, nil, 200)
-	call("GET", server.URL+"/pages/kiosk/", "", nil, 404)
+	call("GET", server.URL+"/p/kiosk/", "", nil, 404)
 	call("GET", signed.URL, "", nil, 200)
 	call("PUT", root+"/kiosk", `{"private":false}`, nil, 200)
 	call("PUT", server.URL+"/api/settings", `{"defaultPage":"kiosk"}`, nil, 200)

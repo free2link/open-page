@@ -134,28 +134,28 @@ func addLiveScript(data []byte, state liveVersion, scope string) []byte {
 func isReserved(name string) bool {
 	first, _, _ := strings.Cut(name, "/")
 	switch first {
-	case "admin", "api", "mcp", "events", "preview", "pages", "healthz", "_openpage":
+	case "admin", "api", "mcp", "events", "p", "d", "healthz", "_openpage":
 		return true
 	}
 	return false
 }
 
 func (a *Service) registerPages(mux *http.ServeMux) {
-	mux.HandleFunc("GET /preview/{id}/{ticket}/{file...}", a.preview)
+	mux.HandleFunc("GET /d/{id}/{ticket}/{file...}", a.preview)
 	mux.HandleFunc("GET /events", a.events)
 	mux.HandleFunc("GET /_openpage/live.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		fmt.Fprint(w, liveScript)
 	})
-	mux.HandleFunc("GET /pages/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /p/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !pageID.MatchString(r.PathValue("id")) {
 			http.NotFound(w, r)
 			return
 		}
-		http.Redirect(w, r, "/pages/"+r.PathValue("id")+"/", http.StatusPermanentRedirect)
+		http.Redirect(w, r, "/p/"+r.PathValue("id")+"/", http.StatusPermanentRedirect)
 	})
-	mux.HandleFunc("GET /pages/{id}/{file...}", a.published)
+	mux.HandleFunc("GET /p/{id}/{file...}", a.published)
 	mux.HandleFunc("GET /{file...}", func(w http.ResponseWriter, r *http.Request) {
 		if isReserved(r.PathValue("file")) {
 			http.NotFound(w, r)

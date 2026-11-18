@@ -17,8 +17,8 @@ docker compose up -d --build
 | 管理台 | `/admin/` |
 | HTTP API | `/api/` |
 | MCP | `/mcp` |
-| 正式站点 | `/` 和 `/pages/{id}/` |
-| 草稿预览 | `/preview/{id}/{ticket}/`，由授权请求生成 |
+| 正式站点 | `/` 和 `/p/{id}/` |
+| 草稿预览 | `/d/{id}/{ticket}/`，由授权请求生成 |
 | 健康检查 | `/healthz` |
 
 新数据目录的默认管理口令是 `admin`。可以在首次部署前设置 `OPENPAGE_TOKEN`，或登录后在系统设置中更新口令。已有数据目录继续使用原来的管理凭据。HTTP API 和 MCP 将同一凭据作为 Bearer Token 发送。

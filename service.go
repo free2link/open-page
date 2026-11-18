@@ -53,7 +53,7 @@ func (a *Service) view(p Page) PageView {
 	if p.Current != "" {
 		status = "published"
 	}
-	return PageView{p, a.origin + "/pages/" + p.ID + "/", status}
+	return PageView{p, a.origin + "/p/" + p.ID + "/", status}
 }
 
 func (a *Service) execute(op string, c Command) (any, error) {
@@ -175,7 +175,7 @@ func (a *Service) execute(op string, c Command) (any, error) {
 		expiry := time.Now().Add(30 * time.Minute).Unix()
 		ticket := strconv.FormatInt(expiry, 10)
 		ticket += "." + signPreview(s.settings.PreviewKey, p, ticket)
-		return map[string]any{"url": a.origin + "/preview/" + p.ID + "/" + ticket + "/", "expiresAt": time.Unix(expiry, 0).UTC()}, nil
+		return map[string]any{"url": a.origin + "/d/" + p.ID + "/" + ticket + "/", "expiresAt": time.Unix(expiry, 0).UTC()}, nil
 	case "list_versions":
 		return p.Versions, nil
 	case "protect_version":
