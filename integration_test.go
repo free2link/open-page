@@ -75,6 +75,9 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	root := server.URL + "/api/pages"
 	files := root + "/kiosk/files"
 	entry := files + "/index.html"
+	if home, _ := call("GET", server.URL+"/", "", nil, 200); !strings.Contains(string(home), "OpenPage") {
+		t.Fatalf("default page missing on a fresh deployment: %s", home)
+	}
 	call("POST", root, `{"id":"kiosk","title":"Kiosk"}`, nil, 201)
 	call("POST", root+"/kiosk/publish", `{"expected":"stale"}`, nil, 409)
 	call("PUT", entry, `<!doctype html><title>First</title><h1>First</h1>`, map[string]string{"If-None-Match": "*"}, 200)
@@ -365,6 +368,29 @@ func TestDefaultPasswordAndPreviewKey(t *testing.T) {
 	check("other", 401)
 	if len(store.settings.PreviewKey) < 32 || store.settings.PreviewKey == store.settings.TokenHash {
 		t.Fatal("preview key must be independently generated")
+	}
+}
+
+func TestFreshStoreSeedsDefaultPage(t *testing.T) {
+	store, err := openStore(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.close()
+	if store.settings.DefaultPage != seedPageID {
+		t.Fatalf("default page = %q, want %q", store.settings.DefaultPage, seedPageID)
+	}
+	p, err := store.load(seedPageID)
+	if err != nil || p.Current == "" {
+		t.Fatalf("seeded page = %+v, %v", p, err)
+	}
+	page, err := store.readFile(pageDir(seedPageID)+"/versions/"+p.Current, "index.html")
+	if err != nil || !strings.Contains(string(page), "OpenPage") {
+		t.Fatalf("seeded content = %q, %v", page, err)
+	}
+	entries, err := store.list()
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("seeded pages = %v, %v", entries, err)
 	}
 }
 

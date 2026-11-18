@@ -195,8 +195,18 @@ func (s *Store) initialize(token string) error {
 		}
 		s.settings.TokenHash = digest([]byte(token))
 	}
+	fresh := errors.Is(err, fs.ErrNotExist)
+	write := fresh
 	if s.settings.PreviewKey == "" {
 		s.settings.PreviewKey = randomID() + randomID()
+		write = true
+	}
+	if fresh {
+		if err := s.seedDefaultPage(); err != nil {
+			return err
+		}
+	}
+	if write {
 		return s.writeJSON("config/settings.json", s.settings)
 	}
 	return nil

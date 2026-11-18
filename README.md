@@ -2,13 +2,48 @@
 
 OpenPage 是面向个人开发者和家庭 NAS 的自托管网页发布服务。通过管理台、HTTP API 或 MCP 编辑 HTML、CSS、JavaScript 和其他静态文件。工作文件可以单独预览，发布时生成历史版本，已打开的正式页面通过 SSE 自动刷新。
 
-## Docker Compose
+## 快速开始
 
-启动服务：
+### 拉取预构建镜像
+
+新建 `compose.yaml`：
+
+```yaml
+services:
+  openpage:
+    image: ghcr.io/free2link/open-page:latest
+    ports:
+      - "${OPENPAGE_HOST_BIND:-127.0.0.1}:3000:3000"
+    environment:
+      OPENPAGE_TOKEN: "${OPENPAGE_TOKEN:-}"
+      OPENPAGE_URL: "${OPENPAGE_URL:-http://localhost:3000}"
+    volumes:
+      - "${OPENPAGE_VOLUME:-openpage-data}:/data"
+    read_only: true
+    init: false
+    restart: unless-stopped
+volumes:
+  openpage-data:
+```
+
+启动：
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+拉取预构建镜像不需要 `--build`。首次启动会自动创建并发布默认页面，打开 `http://localhost:3000` 即可看到；管理台在 `/admin/`，新数据目录的初始口令为 `admin`。
+
+### 从源码构建
+
+在仓库根目录执行：
 
 ```sh
 docker compose up -d --build
 ```
+
+仓库自带的 `compose.yaml` 使用本地构建（`build: .` 和 `image: openpage:local`）。`--build` 表示强制按当前源码重新构建；只重启服务时用 `docker compose up -d` 即可，不需要 `--build`。
 
 所有入口默认共用 `http://localhost:3000`。
 
@@ -22,8 +57,6 @@ docker compose up -d --build
 | 健康检查 | `/healthz` |
 
 新数据目录的默认管理口令是 `admin`。可以在首次部署前设置 `OPENPAGE_TOKEN`，或登录后在系统设置中更新口令。已有数据目录继续使用原来的管理凭据。HTTP API 和 MCP 将同一凭据作为 Bearer Token 发送。
-
-在管理台创建页面，添加 `index.html` 和所需资源，选择「发布」。然后到「系统设置」选择默认页面，默认页面显示在根路径。
 
 默认使用 Docker 命名卷 `openpage-data`，并仅将端口发布到本机回环地址。部署到 NAS 时，可通过 `OPENPAGE_VOLUME` 指定宿主机目录。该目录须允许容器用户 `10001:10001` 读写，并支持原子重命名和文件锁。一个数据目录由一个服务实例管理。
 
@@ -90,7 +123,7 @@ curl -fsS "$admin/api/pages/home/publish" -H "Authorization: Bearer $OPENPAGE_TO
 - 使用相对资源路径。发布需要根目录下的 `index.html`。文件路径的目录分隔符为 `/`，每段接受 ASCII 字母、数字、短横线、下划线和 `@`，中间也可包含空格和点。
 - 每个工作版本最多 64 MiB、4096 个文件，单文件最多 8 MiB。每页保留最近 20 个发布版本，以及受保护的旧版本。发布版本合计上限为 2 GiB、100 个。
 - 服务器通过一个原子切换的版本清单为每次请求选择完整快照。一次浏览器加载中的独立资源请求仍可能跨过切换时点，SSE 会在发布后重新加载页面。
-- 根路径保留 `admin`、`api`、`mcp`、`events`、`preview`、`pages`、`healthz` 和 `_openpage`。如网页设置自己的内容安全策略，请允许同源的 `/_openpage/live.js` 和 `/events`。
+- 根路径保留 `admin`、`api`、`mcp`、`events`、`p`、`d`、`healthz` 和 `_openpage`。如网页设置自己的内容安全策略，请允许同源的 `/_openpage/live.js` 和 `/events`。
 - 直接运行时，可通过 `OPENPAGE_PORT` 调整监听端口，通过 `OPENPAGE_URL` 设置对外来源。直接运行时，数据目录默认是 `./data`，可通过 `OPENPAGE_DATA_DIR` 设置。
 - 发布和草稿元数据保存在数据卷中。应一并备份 `config/` 和 `pages/`。
 
