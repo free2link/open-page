@@ -130,24 +130,28 @@ function listRow(list, child) {
 function renderPages() {
   const list = $("pages");
   list.replaceChildren();
+  $("page-count").textContent = "共 " + state.pages.length + " 个页面";
   const select = $("default-page");
   select.replaceChildren(new Option("未设置", ""));
   for (const p of state.pages) {
-    const card = element("button", undefined, "page-card");
-    card.type = "button";
-    if (p.current) card.classList.add("published");
-    if (p.private) card.classList.add("private");
-    card.append(element("strong", p.title), element("code", "/p/" + p.id + "/"));
-    const status = [p.id === state.settings.defaultPage ? "默认" : "",
-      p.current ? (p.private ? "私有 · 已发布" : "已发布") : "草稿"].filter(Boolean).join(" · ");
-    card.append(element("span", status, "state"));
-    card.addEventListener("click", action(async () => {
+    const open = element("button", undefined, "page-row");
+    open.type = "button";
+    if (p.current) open.classList.add("published");
+    if (p.private) open.classList.add("private");
+    const identity = element("span", undefined, "page-identity");
+    const title = element("span", undefined, "page-row-title");
+    title.append(element("strong", p.title));
+    if (p.id === state.settings.defaultPage) title.append(element("span", "默认首页", "default-tag"));
+    identity.append(title, element("code", "/p/" + p.id + "/"));
+    const status = p.current ? (p.private ? "已发布（私有）" : "已发布") : "草稿";
+    const chevron = element("span", "›", "page-chevron");
+    chevron.setAttribute("aria-hidden", "true");
+    open.append(identity, element("span", status, "state"), chevron);
+    open.addEventListener("click", action(async () => {
       if (p.id === state.page?.id || !await safeToLeave()) return;
       await openPage(p.id);
     }));
-    const row = element("li");
-    row.append(card);
-    list.append(row);
+    listRow(list, open);
     if (p.current && !p.private) select.append(new Option(p.title, p.id));
   }
   $("wall-empty").hidden = state.pages.length > 0;
@@ -252,6 +256,7 @@ function renderPage() {
   $("empty").hidden = Boolean(state.page);
   $("page").hidden = !state.page;
   $("settings-page").hidden = true;
+  $("settings-open").removeAttribute("aria-current");
   $("back").hidden = !state.page;
   $("more-menu").hidden = true;
   $("more-toggle").setAttribute("aria-expanded", "false");
@@ -373,6 +378,7 @@ function showSettings() {
   $("empty").hidden = true;
   $("page").hidden = true;
   $("settings-page").hidden = false;
+  $("settings-open").setAttribute("aria-current", "page");
   $("back").hidden = false;
   history.replaceState(null, "", "#/settings");
   renderPages();
@@ -437,7 +443,6 @@ on("login-form", "submit", async () => {
   $("logout").hidden = false;
   await route();
   if (!state.page && $("settings-page").hidden) $("new-page").focus();
-  report("已登录");
 });
 on("logout", "click", async () => {
   if (await safeToLeave()) {
@@ -456,8 +461,8 @@ function starterPage(title) {
   const template = state.settings.starterHtml;
   if (!template) return "<!doctype html><title>" + name + "</title><h1>" + name + "</h1>\n";
   return template
-    .replace("<title>OpenPage</title>", "<title>" + name + "</title>")
-    .replace("<h1>OpenPage</h1>", "<h1>" + name + "</h1>");
+    .replace("<title>OpenPage</title>", () => "<title>" + name + "</title>")
+    .replace("<h1>OpenPage</h1>", () => "<h1>" + name + "</h1>");
 }
 
 function makePageID(title) {
@@ -743,7 +748,7 @@ for (const tab of document.querySelectorAll(".format-tabs [data-format]")) {
   tab.addEventListener("click", () => {
     $("mcp-format").value = tab.dataset.format;
     for (const other of document.querySelectorAll(".format-tabs [data-format]")) {
-      other.setAttribute("aria-selected", String(other === tab));
+      other.setAttribute("aria-pressed", String(other === tab));
     }
     renderMCPConfig();
   });

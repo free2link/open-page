@@ -13,10 +13,10 @@
 <body>
   <a href="#main-content" class="skip-link">跳到主要内容</a>
   <header class="masthead">
-    <a href="#/" class="brand">Open<span>Page</span></a>
-    <span class="subtitle">页面管理台</span>
+    <a href="#/" class="brand"><span class="page-mark" aria-hidden="true"></span>OpenPage</a>
+    <span class="subtitle">管理台</span>
     <div class="masthead-actions">
-      <button id="back" type="button" hidden>← 返回</button>
+      <button id="back" type="button" hidden>‹ 页面列表</button>
       <button id="settings-open" type="button" hidden>设置</button>
       <button id="logout" type="button" hidden>退出</button>
     </div>
@@ -24,11 +24,17 @@
   <main id="main-content" tabindex="-1">
     <p id="status" role="status" class="status"></p>
 
-    <section id="login" class="login panel">
-      <h1>登录管理台</h1>
-      <form id="login-form">
+    <section id="login" class="login">
+      <div class="login-intro">
+        <span class="page-mark" aria-hidden="true"></span>
+        <h1>发布工作台</h1>
+        <p>管理页面、预览草稿并发布版本。</p>
+        <a href="/">查看站点 ↗</a>
+      </div>
+      <form id="login-form" class="login-form" aria-labelledby="login-title">
+        <h2 id="login-title">登录管理台</h2>
         <label for="login-token">登录口令</label>
-        <input id="login-token" type="password" required autocomplete="off" spellcheck="false">
+        <input id="login-token" type="password" required autocomplete="current-password" spellcheck="false">
         <button class="primary">登录</button>
       </form>
     </section>
@@ -37,13 +43,19 @@
       <section id="empty" class="wall" aria-labelledby="wall-title">
         <div class="wall-head">
           <div>
-            <h1 id="wall-title">页面</h1>
-            <p class="muted">选择页面查看和编辑，或新建一个。</p>
+            <h1 id="wall-title">页面管理</h1>
+            <p class="muted" id="page-count"></p>
           </div>
-          <button id="new-page" type="button" class="primary">＋ 新建页面</button>
+          <div class="actions">
+            <a href="/" class="button">查看站点 ↗</a>
+            <button id="new-page" type="button" class="primary">＋ 新建页面</button>
+          </div>
         </div>
-        <ul id="pages" class="cards" role="list"></ul>
-        <p id="wall-empty" class="muted" hidden>还没有页面，点上面的按钮开始。</p>
+        <div class="page-list">
+          <div class="page-list-head" aria-hidden="true"><span>页面</span><span>发布状态</span></div>
+          <ul id="pages" class="page-rows" role="list"></ul>
+          <p id="wall-empty" class="muted" hidden>还没有页面。点击「新建页面」开始。</p>
+        </div>
       </section>
 
       <section id="page" class="studio" hidden aria-labelledby="page-title">
@@ -68,6 +80,7 @@
           </div>
         </header>
         <div class="canvas">
+          <div class="canvas-bar"><span class="page-mark" aria-hidden="true"></span>草稿预览</div>
           <iframe id="preview-frame" title="页面草稿预览"></iframe>
         </div>
       </section>
@@ -113,10 +126,10 @@
                 <p class="muted">把配置粘到 Codex、OpenCode 或 Claude Code，AI 就能直接修改页面。</p>
               </div>
               <div class="actions">
-                <div class="format-tabs" role="tablist" aria-label="MCP 配置格式">
-                  <button type="button" class="tab" data-format="claude" aria-selected="true">Claude Code</button>
-                  <button type="button" class="tab" data-format="codex" aria-selected="false">Codex</button>
-                  <button type="button" class="tab" data-format="opencode" aria-selected="false">OpenCode</button>
+                <div class="format-tabs" role="group" aria-label="MCP 配置格式">
+                  <button type="button" class="tab" data-format="claude" aria-pressed="true">Claude Code</button>
+                  <button type="button" class="tab" data-format="codex" aria-pressed="false">Codex</button>
+                  <button type="button" class="tab" data-format="opencode" aria-pressed="false">OpenCode</button>
                 </div>
                 <button id="copy-mcp-config" type="button">复制配置</button>
               </div>
