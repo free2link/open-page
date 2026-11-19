@@ -79,7 +79,6 @@ func (a *Service) execute(op string, c Command) (any, error) {
 		p, err := s.create(c.ID, c.Title)
 		return a.view(p), err
 	case "get_settings", "update_settings":
-		out := map[string]any{"publicUrl": a.origin, "previewUrl": a.origin, "adminUrl": a.origin, "version": appVersion, "retention": retention, "maxFileBytes": maxFile, "maxDraftBytes": maxDraft, "apiToken": s.settings.APIToken, "starterHtml": seedPageHTML}
 		if op == "update_settings" {
 			next := s.settings
 			if c.DefaultPage != nil {
@@ -130,10 +129,20 @@ func (a *Service) execute(op string, c Command) (any, error) {
 				s.notify()
 			}
 		}
-		out["defaultPage"] = s.settings.DefaultPage
-		out["requireApiAuth"] = !s.settings.APIAuthDisabled
-		out["requireMcpAuth"] = !s.settings.MCPAuthDisabled
-		return out, nil
+		return map[string]any{
+			"publicUrl":      a.origin,
+			"previewUrl":     a.origin,
+			"adminUrl":       a.origin,
+			"version":        appVersion,
+			"retention":      retention,
+			"maxFileBytes":   maxFile,
+			"maxDraftBytes":  maxDraft,
+			"apiToken":       s.settings.APIToken,
+			"starterHtml":    seedPageHTML,
+			"defaultPage":    s.settings.DefaultPage,
+			"requireApiAuth": !s.settings.APIAuthDisabled,
+			"requireMcpAuth": !s.settings.MCPAuthDisabled,
+		}, nil
 	}
 
 	p, err := s.load(c.ID)

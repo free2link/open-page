@@ -234,7 +234,16 @@ func TestPublishingAcrossHTTPAndMCP(t *testing.T) {
 	call("GET", server.URL+"/admin/api/settings", "", nil, 200)
 	call("GET", root, "", nil, 401)
 	client.Transport = authTransport{testToken}
-	call("PUT", server.URL+"/api/settings", fmt.Sprintf(`{"newToken":%q}`, newToken), nil, 200)
+	responseBody, _ = call("PUT", server.URL+"/api/settings", fmt.Sprintf(`{"newToken":%q}`, newToken), nil, 200)
+	var updatedSettings struct {
+		APIToken string `json:"apiToken"`
+	}
+	if err := json.Unmarshal(responseBody, &updatedSettings); err != nil {
+		t.Fatalf("decode updated settings: %v", err)
+	}
+	if updatedSettings.APIToken != newToken {
+		t.Fatal("settings response did not return the new API token")
+	}
 	call("GET", root, "", nil, 401)
 	client.Transport = authTransport{newToken}
 	call("GET", root, "", nil, 200)
